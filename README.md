@@ -7,10 +7,17 @@ genetic_disorder_detection_project/
 ├── data/                       # Directory to store raw and processed data
 │   ├── raw/                    # Raw input VCF files
 │   ├── processed/              # Processed output files
+│       ├── <timestamped-folder>/  # Each run generates unique output folder
+│           ├── processed_variants_<timestamp>.csv
+│           ├── metadata_<timestamp>.txt
 ├── src/                        # Source code
 │   ├── parser/                 # VCF parsing logic
 │   │   ├── __init__.py         
 │   │   └── vcf_parser.py       # Main VCF parsing module
+│   ├── app/                    # Flask app
+│   │   ├── templates/          # HTML files for the UI
+│   │   ├── static/             # Static assets (CSS, JS, etc.)
+│   │   └── app.py              # Main Flask app
 ├── tests/                      # Unit tests
 │   ├── __init__.py
 │   └── test_vcf_parser.py      # Tests for the parser module
@@ -52,22 +59,21 @@ pip install -r requirements.txt
 
 The `vcf_parser.py` script parses VCF files, extracts metadata, and saves the variant information to a CSV file.
 
-1. **Place the VCF file** you want to parse in the `data/raw` directory.
-
-2. **Run the VCF Parser**:
-    In `tests/test_vcf_parser.py`, change the following file location (to your vcf file name):
-    ```python
-    def test_parse_vcf():
-        test_file = os.path.join(os.path.dirname(__file__), '../data/raw/sample.vcf')
+1. **Start the Flask server**:
+    ```bash
+    python -m src.app.app
     ```
 
-3. **Running Test**:
+2. Open your browser and navigate to **http://127.0.0.1:5000/** to access the web interface.
+
+3. Upload a VCF file, and the parser will process it. The output CSV and metadata file will be saved in the `data/processed/<timestamped-folder>/` directory.
+
+4. **(Optional) Running Test**:
     To verify that the parsing functionality works as expected, use `pytest` to run the unit test `test_vcf_parser.py`:
     ```bash
     pytest tests/
     ```
-
-This will run all tests in the `tests/` directory. A successful test run confirms that the parser correctly reads the VCF data and stores it in the desired format.
+    This will run all tests in the `tests/` directory. A successful test run confirms that the parser correctly reads the VCF data and stores it in the desired format.
 
 ## Project Status
 This project is in the initial stages of development. Currently, only VCF parsing and storing functionality is implemented. Future stages will include data filtering, variant annotation, and web interface development.

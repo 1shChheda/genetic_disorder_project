@@ -4,7 +4,7 @@ import pandas as pd
 from src.parser.vcf_parser import VCFParser
 
 def test_parse_vcf():
-    test_file = os.path.join(os.path.dirname(__file__), '../data/raw/sample.vcf')
+    test_file = os.path.join(os.path.dirname(__file__), '../data/raw/test.vcf')
     parser = VCFParser(test_file)
     
     # parse the file (metadata + variants)
