@@ -1,46 +1,38 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
 import os
-from ..parser.vcf_parser import parse_vcf
-from datetime import datetime
+from flask import Flask, request, render_template, redirect, url_for
+from src.parser.vcf_parser import parse_vcf
+from src.annotator.vep_annotator import annotate_variants
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
 
 #PATHS
-UPLOAD_FOLDER = './data/raw/'
-PROCESSED_FOLDER = './data/processed/'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-#to ensure directories exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PROCESSED_FOLDER, exist_ok=True)
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data/raw')
+PROCESSED_FOLDER = os.path.join(os.getcwd(), 'data/processed')
 
 @app.route('/')
-def index():
+def home():
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'vcf_file' not in request.files:
-        flash('No file part')
-        return redirect(request.url)
-
+        return 'No file part'
     file = request.files['vcf_file']
     if file.filename == '':
-        flash('No selected file')
-        return redirect(request.url)
-
+        return 'No selected file'
     if file:
-        #saving uploaded file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        input_vcf = os.path.join(app.config['UPLOAD_FOLDER'], f"{timestamp}_{file.filename}")
-        file.save(input_vcf)
+        input_path = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(input_path)
 
-        #processing the VCF file
-        parse_vcf(input_vcf, PROCESSED_FOLDER)
+        # Step 1: Parse VCF
+        output_folder = parse_vcf(input_vcf=input_path, output_dir=PROCESSED_FOLDER)
 
-        flash(f"File processed successfully. Outputs stored in {PROCESSED_FOLDER}")
-        return redirect(url_for('index'))
+        # Step 2: Annotate variants
+        parsed_csv = os.path.join(output_folder, 'parsed_variants.csv')
+        annotated_csv = os.path.join(output_folder, 'annotated_variants.csv')
+        annotate_variants(parsed_csv, annotated_csv)
+
+        return f'File processed. Outputs saved in {output_folder}'
 
 if __name__ == '__main__':
     app.run(debug=True)

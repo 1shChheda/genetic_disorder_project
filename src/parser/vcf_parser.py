@@ -4,27 +4,29 @@ from datetime import datetime
 
 def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
     """
-    Parses a VCF file and generates timestamped outputs.
+    Parses a VCF file and generates a CSV with necessary variant fields.
 
     Args:
         input_vcf (str): Path to the input VCF file.
-        output_dir (str): Directory to store processed files.
+        output_dir (str): Directory to save processed files.
         retain_info_fields (list, optional): List of `INFO` fields to retain.
-            Defaults to ['AF', 'AC', 'DP', 'Impact'].
+
+    Returns:
+        str: Path to the folder containing parsed outputs.
     """
     if retain_info_fields is None:
         retain_info_fields = ['AF', 'AC', 'DP', 'Impact']
 
     #creatinng timestamped folder
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = os.path.join(output_dir, timestamp)
-    os.makedirs(output_path, exist_ok=True)
+    output_folder = os.path.join(output_dir, timestamp)
+    os.makedirs(output_folder, exist_ok=True)
 
     #output file paths
-    csv_path = os.path.join(output_path, 'parsed_variants.csv')
-    metadata_path = os.path.join(output_path, 'metadata.txt')
+    parsed_csv = os.path.join(output_folder, 'parsed_variants.csv')
+    metadata_txt = os.path.join(output_folder, 'metadata.txt')
 
-    with open(input_vcf, 'r') as vcf_file, open(csv_path, 'w', newline='') as csv_file:
+    with open(input_vcf, 'r') as vcf_file, open(parsed_csv, 'w', newline='') as csv_file:
         reader = vcf_file.readlines()
         writer = csv.writer(csv_file)
 
@@ -33,7 +35,7 @@ def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
         data_lines = [line for line in reader if not line.startswith('#')]
 
         #2)save metadata
-        with open(metadata_path, 'w') as meta_file:
+        with open(metadata_txt, 'w') as meta_file:
             meta_file.writelines(metadata)
 
         #3)extract header and write new CSV header
@@ -50,14 +52,9 @@ def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
             fields = line.strip().split('\t')
 
             #5a)extract main columns
-            chrom = fields[0]
-            pos = fields[1]
-            var_id = fields[2]
-            ref = fields[3]
-            alt = fields[4]
-            qual = fields[5]
-            filter_status = fields[6]
-            info = fields[info_index]
+            chrom, pos, var_id, ref, alt, qual, filter_status, info = (
+                fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[info_index]
+            )
 
             #skipping rows with missing or low-quality data
             # if qual == '.' or filter_status != 'PASS':
@@ -70,4 +67,4 @@ def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
             #5c)write row to CSV
             writer.writerow([chrom, pos, var_id, ref, alt, qual, filter_status] + parsed_info)
 
-    print(f"Output files saved in: {output_path}")
+    return output_folder
