@@ -84,20 +84,45 @@ class VEPAnnotator:
         except Exception as e:
             self.logger.error(f"Error loading ClinVar data: {str(e)}")
             return {}
+        
+    #extracting the "END" position from "INFO" field
+    def _extract_end_position(self, info_field):
+
+        for entry in info_field.split(";"):
+            if entry.startswith("END="):
+                return entry.split("=")[1]
+        return None
+    
+    #extracting clinical significance from ClinVar INFO field
+    def _extract_clinvar_significance(self, info_field):
+
+        if 'CLNSIG=' in info_field:
+            sig_start = info_field.index('CLNSIG=') + 7
+            sig_end = info_field.index(';', sig_start) if ';' in info_field[sig_start:] else len(info_field)
+            return info_field[sig_start:sig_end]
+        return ''
     
     # IMP fn no.1: 
-    def _query_ensembl_vep(self, chrom, pos, ref, alt):
+    def _query_ensembl_vep(self, chrom, start, end, ref, alt):
     # args:
         # chrom: Chromosome
         # pos: Position
         # ref: Reference allele
         # alt: Alternate allele
 
+        #NOTE: skipping API call if there's no alternate allele
+        if alt == '.' or not alt:
+            self.logger.debug(f"Skipping VEP query for {chrom}:{start} - reference call or missing ALT")
+            return None
+        
         self.api_call_count += 1
-        variant_id = f"{chrom}:{pos}:{ref}>{alt}"
+        variant_id = f"{chrom}:{start}:{ref}>{alt}"
         
         try:
-            url = f"{self.vep_base_url}{chrom}:{pos}-{pos}/{alt}"
+            #removing 'chr' prefix (ensembl api call mein better padta hai)
+            region = f"{chrom.replace('chr', '')}:{start}-{end}"
+            url = f"{self.vep_base_url}{region}/{alt}"
+            
             self.logger.debug(f"Querying VEP API for variant {variant_id}")
             
             headers = {"Content-Type": "application/json"}
@@ -116,22 +141,12 @@ class VEPAnnotator:
             self.logger.error(f"Failed to query VEP API for {variant_id}: {str(e)}")
             return {}
     
-    #extracting clinical significance from ClinVar INFO field
-    def _extract_clinvar_significance(self, info_field):
-
-        if 'CLNSIG=' in info_field:
-            sig_start = info_field.index('CLNSIG=') + 7
-            sig_end = info_field.index(';', sig_start) if ';' in info_field[sig_start:] else len(info_field)
-            return info_field[sig_start:sig_end]
-        return ''
-    
     # IMP fn no.2:
     def annotate_variants(self, input_csv, output_csv):
         # args:
-        #     input_csv (str): Path to input parsed variants CSV
-        #     output_csv (str): Path to output annotated variants CSV
-        
-        self.logger.info(f"Starting variant annotation: {input_csv} to {output_csv}")
+        #     input_csv: path to input parsed variants CSV
+        #     output_csv: path to output annotated variants CSV
+        self.logger.info(f"Starting variant annotation: {input_csv} → {output_csv}")
         
         try:
             #counting total variants first for progress tracking
@@ -147,51 +162,59 @@ class VEPAnnotator:
                 reader = csv.DictReader(infile)
                 fieldnames = reader.fieldnames + [
                     'VEP_Consequence', 'VEP_Impact', 'VEP_Gene', 
-                    'ClinVar_Significance', 'ClinVar_ID'
+                    'ClinVar_Significance', 'ClinVar_ID',
+                    'Variant_End_Position', 'Is_Reference'
                 ]
                 writer = csv.DictWriter(outfile, fieldnames=fieldnames)
                 writer.writeheader()
                 
                 for row in tqdm(reader, total=total_variants, desc="Annotating variants"):
-                    variant_id = f"{row['CHROM']}:{row['POS']}:{row['REF']}>{row['ALT']}"
-                    self.logger.info(f"Processing variant: {variant_id}")
+                    #if there's no "end" position, we will use "start" position itself
+                    end_pos = self._extract_end_position(row.get('INFO', '')) or row['POS']
                     
-                    #getting VEP annotations
-                    vep_result = self._query_ensembl_vep(
-                        row['CHROM'], row['POS'], row['REF'], row['ALT']
-                    )
-                    
-                    #getting clinvar information
-                    clinvar_key = variant_id
-                    clinvar_info = self.clinvar_data.get(clinvar_key, {})
-                    
-                    #extracting VEP annotations - IMP
-                    consequence = ''
-                    impact = ''
-                    gene = ''
-                    
-                    if vep_result and len(vep_result) > 0:
-                        first_result = vep_result[0]
-                        consequence = first_result.get('most_severe_consequence', '')
-                        if 'transcript_consequences' in first_result:
-                            transcript = first_result['transcript_consequences'][0]
-                            impact = transcript.get('impact', '')
-                            gene = transcript.get('gene_symbol', '')
-                            
-                        self.logger.debug(f"VEP annotations for {variant_id}: "
-                                        f"consequence={consequence}, impact={impact}, gene={gene}")
-                    
-
-                    clinvar_significance = self._extract_clinvar_significance(clinvar_info.get('info', ''))
-                    
-                    # FINALLY! updating row with annotations
+                    #initializing annotation fields (to later update in the output file)
                     row.update({
-                        'VEP_Consequence': consequence,
-                        'VEP_Impact': impact,
-                        'VEP_Gene': gene,
-                        'ClinVar_Significance': clinvar_significance,
-                        'ClinVar_ID': clinvar_info.get('id', '')
+                        'VEP_Consequence': '',
+                        'VEP_Impact': '',
+                        'VEP_Gene': '',
+                        'ClinVar_Significance': '',
+                        'ClinVar_ID': '',
+                        'Variant_End_Position': end_pos,
+                        'Is_Reference': 'Yes' if row['ALT'] == '.' else 'No'
                     })
+                    
+                    # Only query VEP for actual variants
+                    if row['ALT'] != '.':
+                        variant_id = f"{row['CHROM']}:{row['POS']}:{row['REF']}>{row['ALT']}"
+                        self.logger.info(f"Processing variant: {variant_id}")
+                        
+                        #getting vep annotations
+                        vep_result = self._query_ensembl_vep(
+                            row['CHROM'], row['POS'], end_pos, row['REF'], row['ALT']
+                        )
+                        
+                        #getting clinvar information
+                        clinvar_key = variant_id
+                        clinvar_info = self.clinvar_data.get(clinvar_key, {})
+                        
+                        if vep_result and len(vep_result) > 0:
+                            first_result = vep_result[0]
+                            row['VEP_Consequence'] = first_result.get('most_severe_consequence', '')
+                            if 'transcript_consequences' in first_result:
+                                transcript = first_result['transcript_consequences'][0]
+                                row['VEP_Impact'] = transcript.get('impact', '')
+                                row['VEP_Gene'] = transcript.get('gene_symbol', '')
+                                
+                            self.logger.debug(f"VEP annotations for {variant_id}: "
+                                            f"consequence={row['VEP_Consequence']}, "
+                                            f"impact={row['VEP_Impact']}, "
+                                            f"gene={row['VEP_Gene']}")
+                        
+
+                        row['ClinVar_Significance'] = self._extract_clinvar_significance(
+                            clinvar_info.get('info', '')
+                        )
+                        row['ClinVar_ID'] = clinvar_info.get('id', '')
                     
                     writer.writerow(row)
                     processed += 1
@@ -203,7 +226,7 @@ class VEPAnnotator:
                         self.logger.info(f"Processed {processed}/{total_variants} variants "
                                        f"({rate:.2f} variants/second)")
                     
-                    #for api rate limits
+                    #delay added to not violate api rate limits
                     time.sleep(0.5)
             
             # final statistics
