@@ -2,21 +2,18 @@ import os
 import csv
 from datetime import datetime
 
-def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
+
+def parse_vcf(input_vcf, output_dir):
     """
-    Parses a VCF file and generates a CSV with necessary variant fields.
+    Parses a VCF file and stores essential fields, preserving the INFO field intact.
 
     Args:
         input_vcf (str): Path to the input VCF file.
         output_dir (str): Directory to save processed files.
-        retain_info_fields (list, optional): List of `INFO` fields to retain.
 
     Returns:
         str: Path to the folder containing parsed outputs.
     """
-    if retain_info_fields is None:
-        retain_info_fields = ['AF', 'AC', 'DP', 'Impact']
-
     #creatinng timestamped folder
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_folder = os.path.join(output_dir, timestamp)
@@ -26,9 +23,9 @@ def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
     parsed_csv = os.path.join(output_folder, 'parsed_variants.csv')
     metadata_txt = os.path.join(output_folder, 'metadata.txt')
 
-    with open(input_vcf, 'r') as vcf_file, open(parsed_csv, 'w', newline='') as csv_file:
-        reader = vcf_file.readlines()
-        writer = csv.writer(csv_file)
+    try:
+        with open(input_vcf, 'r') as vcf_file:
+            reader = vcf_file.readlines()
 
         #1)metadata extraction
         metadata = [line for line in reader if line.startswith('##')]
@@ -43,28 +40,30 @@ def parse_vcf(input_vcf, output_dir, retain_info_fields=None):
         header = header_line.strip().split('\t')
         info_index = header.index('INFO')
 
-        #4)CSV header
-        output_header = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER'] + retain_info_fields
-        writer.writerow(output_header)
+        # PREPARING output CSV
+        with open(parsed_csv, 'w', newline='') as csv_file:
+            writer = csv.writer(csv_file)
 
-        #5)parse and write variant data
-        for line in data_lines:
-            fields = line.strip().split('\t')
+            #4)CSV header
+            output_header = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']
+            writer.writerow(output_header)
 
-            #5a)extract main columns
-            chrom, pos, var_id, ref, alt, qual, filter_status, info = (
-                fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[info_index]
-            )
+            #5)parse and write variant data
+            for line in data_lines:
+                fields = line.strip().split('\t')
 
-            #skipping rows with missing or low-quality data
-            # if qual == '.' or filter_status != 'PASS':
-            #     continue
+                #5a)extract main columns
+                chrom, pos, var_id, ref, alt, qual, filter_status, info = (
+                    fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[info_index]
+                )
 
-            #5b)arse INFO fields
-            info_dict = dict(item.split('=') for item in info.split(';') if '=' in item)
-            parsed_info = [info_dict.get(field, '.') for field in retain_info_fields]
+                # additional: handle multiple ALT alleles (if there's any "C,A" type value)
+                alt_alleles = alt.split(',')
+                for allele in alt_alleles:
+                    #5c)write row to CSV
+                    writer.writerow([chrom, pos, var_id, ref, allele, qual, filter_status, info])
 
-            #5c)write row to CSV
-            writer.writerow([chrom, pos, var_id, ref, alt, qual, filter_status] + parsed_info)
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse VCF file: {e}")
 
     return output_folder
