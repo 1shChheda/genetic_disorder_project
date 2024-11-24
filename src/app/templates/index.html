@@ -3,23 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VCF Parser</title>
+    <title>Genetic Disorder Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='index.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Genetic Disorder Detection: VCF Parser</h1>
-    <form action="/upload" method="POST" enctype="multipart/form-data">
-        <label for="vcf_file">Upload VCF File:</label>
-        <input type="file" name="vcf_file" id="vcf_file" accept=".vcf" required>
-        <button type="submit">Upload and Process</button>
-    </form>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <ul>
-          {% for message in messages %}
-            <li>{{ message }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+    <div class="container">
+        <h1>Genetic Disorder Detection: VCF Parser & Annotator</h1>
+        
+        <div class="upload-section">
+            <form id="upload-form" enctype="multipart/form-data">
+                <div class="upload-icon">
+                    <i class="fas fa-dna"></i>
+                </div>
+                <label>Choose a VCF file to analyze</label>
+                <div class="file-input-wrapper">
+                    <label class="custom-file-upload">
+                      <i class="fas fa-upload" for ="vcf_file"></i> Upload VCF File
+                      <input type="file" id="vcf_file" name="vcf_file" accept=".vcf">
+                    </label>
+                    <div id="file-name">No file chosen</div>
+                </div>
+                <div class="button-group">
+                    <button type="submit" id="process-btn">
+                      <i class="fas fa-cogs"></i> Process File
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div id="loading" class="loading-spinner" style="display: none;">
+            <div class="spinner"></div>
+            <p>Processing file...</p>
+        </div>
+
+        <div id="error-message" class="error-message" style="display: none;"></div>
+
+        <div id="results-container" style="display: none;">
+            <div class="results-header">
+                <h2>Results</h2>
+                <button id="close-results" class="close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="results-controls">
+                <input type="text" id="table-search" class="table-search" placeholder="Search results...">
+            </div>
+            <div class="table-wrapper">
+                <table id="results-table">
+                    <thead></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='index.js') }}"></script>
 </body>
 </html>

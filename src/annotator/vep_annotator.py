@@ -146,7 +146,7 @@ class VEPAnnotator:
         # args:
         #     input_csv: path to input parsed variants CSV
         #     output_csv: path to output annotated variants CSV
-        self.logger.info(f"Starting variant annotation: {input_csv} → {output_csv}")
+        self.logger.info(f"Starting variant annotation: {input_csv} -> {output_csv}")
         
         try:
             #counting total variants first for progress tracking
