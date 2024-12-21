@@ -4,3 +4,4 @@ flask
 pytest
 scikit-allel
 tqdm
+bs4
