@@ -126,6 +126,67 @@ button {
     transform: translateY(-2px);
 }
 
+.annotation-selection {
+    margin-bottom: 2rem;
+}
+
+.annotation-options {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-top: 1rem;
+}
+
+.annotation-option {
+    position: relative;
+    width: 200px;
+}
+
+.annotation-option input[type="radio"] {
+    display: none;
+}
+
+.annotation-option label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.annotation-option label:hover {
+    border-color: #4299e1;
+    transform: translateY(-2px);
+}
+
+.annotation-option input[type="radio"]:checked + label {
+    border-color: #4299e1;
+    background: #ebf8ff;
+    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.2);
+}
+
+.annotation-option i {
+    font-size: 2rem;
+    color: #4299e1;
+    margin-bottom: 0.5rem;
+}
+
+.annotation-option span {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.25rem;
+}
+
+.annotation-option small {
+    font-size: 0.8rem;
+    color: #718096;
+    text-align: center;
+}
+
 /* Loading Spinner */
 .loading-spinner {
     text-align: center;
@@ -262,4 +323,16 @@ button {
     button {
         width: 100%;
     }
+    
+    .annotation-options {
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .annotation-option {
+        width: 100%;
+        max-width: 300px;
+    }
+
 }

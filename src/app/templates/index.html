@@ -16,17 +16,41 @@
                 <div class="upload-icon">
                     <i class="fas fa-dna"></i>
                 </div>
+                
+                <!-- Added Annotation Type Selection -->
+                <div class="annotation-selection">
+                    <label>Select Annotation Type</label>
+                    <div class="annotation-options">
+                        <div class="annotation-option">
+                            <input type="radio" id="vep" name="annotation_type" value="vep">
+                            <label for="vep">
+                                <i class="fas fa-database"></i>
+                                <span>VEP</span>
+                                <small>Ensembl Variant Effect Predictor</small>
+                            </label>
+                        </div>
+                        <div class="annotation-option">
+                            <input type="radio" id="dbnsfp" name="annotation_type" value="dbnsfp" checked>
+                            <label for="dbnsfp">
+                                <i class="fas fa-project-diagram"></i>
+                                <span>dbNSFP</span>
+                                <small>Database for Functional Predictions</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
                 <label>Choose a VCF file to analyze</label>
                 <div class="file-input-wrapper">
                     <label class="custom-file-upload">
-                      <i class="fas fa-upload" for ="vcf_file"></i> Upload VCF File
-                      <input type="file" id="vcf_file" name="vcf_file" accept=".vcf">
+                        <i class="fas fa-upload"></i> Upload VCF File
+                        <input type="file" id="vcf_file" name="vcf_file" accept=".vcf">
                     </label>
                     <div id="file-name">No file chosen</div>
                 </div>
                 <div class="button-group">
                     <button type="submit" id="process-btn">
-                      <i class="fas fa-cogs"></i> Process File
+                        <i class="fas fa-cogs"></i> Process File
                     </button>
                 </div>
             </form>

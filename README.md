@@ -1,74 +1,101 @@
 # Genetic Disorder Detection Project
 
-## Project Structure (Current Stage Only)
+## Project Overview (Current Stage Only)
+This project processes VCF (Variant Call Format) files to detect genetic disorders through variant annotation. 
+Currently, it supports two annotation methods:
+- Ensembl VEP (Variant Effect Predictor) REST API
+- dbNSFP (database of human non-synonymous SNVs and their functional predictions)
 
+## Project Structure (Current Stage Only)
 ```
 genetic_disorder_detection_project/
-├── data/                       # Directory to store raw and processed data
-│   ├── raw/                    # Raw input VCF files
-│   ├── processed/              # Processed output files
-│       ├── <timestamped-folder>/  # Each run generates unique output folder
-│           ├── processed_variants_<timestamp>.csv
-│           ├── metadata_<timestamp>.txt
-├── src/                        # Source code
-│   ├── parser/                 # VCF parsing logic
-│   │   ├── __init__.py         
-│   │   └── vcf_parser.py       # Main VCF parsing module
-│   ├── app/                    # Flask app
-│   │   ├── templates/          # HTML files for the UI
-│   │   ├── static/             # Static assets (CSS, JS, etc.)
-│   │   └── app.py              # Main Flask app
-├── tests/                      # Unit tests
+├── data/                           # Data storage directory
+│   ├── raw/                        # Raw input VCF files
+│   └── processed/                  # Processed output files
+│       └── <timestamped-folder>/   # Unique folder for each run
+│           ├── parsed_variants.csv
+│           ├── annotated_variants.csv
+│           └── metadata.txt
+├── src/                           # Source code
+│   ├── parser/                    # VCF parsing modules
+│   │   ├── __init__.py
+│   │   ├── base_parser.py        # Abstract base parser
+│   │   ├── vep_parser.py         # VEP-specific parser
+│   │   └── dbnsfp_parser.py      # dbNSFP-specific parser
+│   ├── annotator/                 # Variant annotation modules
+│   │   ├── __init__.py
+│   │   ├── base_annotator.py     # Abstract base annotator
+│   │   ├── vep_annotator.py      # VEP API implementation
+│   │   ├── dbnsfp_annotator.py   # dbNSFP API implementation
+│   │   └── annotation_service.py  # Workflow orchestration
+│   └── app/                       # Web application
+│       ├── templates/             # HTML templates
+│       ├── static/               # Static assets
+│       └── app.py                # Flask application
+├── tests/                        # Unit tests
 │   ├── __init__.py
-│   └── test_vcf_parser.py      # Tests for the parser module
-├── venv/                       # Virtual environment for Linux
-├── .venv/                      # Virtual environment for Windows
+│   └── test_vcf_parser.py       # Parser tests
+├── logs/                        # Application logs
+├── venv/                       # Virtual environment (Linux)
+├── .venv/                      # Virtual environment (Windows)
 ├── requirements.txt            # Python dependencies
-└── README.md                   # Project documentation (you are here)
+└── README.md                   # Project documentation
 ```
 
 ## Setup Instructions
 
 ### 1. Clone the Repository
-Clone the project repository to your local machine:
 ```bash
 git clone https://github.com/1shChheda/genetic_disorder_project.git
 cd genetic_disorder_project
 ```
 
-### 2. Set Up Virtual Environments
-The project supports both Linux (`venv`) and Windows (`.venv`) environments. Follow the steps below to activate the correct environment for your operating system.
+### 2. Set Up Virtual Environment
+Choose the appropriate command based on your operating system:
 
 #### For Linux
 ```bash
+python -m venv venv
 source venv/bin/activate
 ```
 
 #### For Windows
 ```bash
+python -m venv .venv
 .\.venv\Scripts\activate
 ```
 
 ### 3. Install Dependencies
-With the virtual environment activated, install the required packages listed in `requirements.txt`:
 ```bash
 pip install -r requirements.txt
 ```
 
 ## Usage
 
-The `vcf_parser.py` script parses VCF files, extracts metadata, and saves the variant information to a CSV file.
-
-1. **Start the Flask server**:
+1. **Start the Application**:
     ```bash
     python -m src.app.app
     ```
 
-2. Open your browser and navigate to **http://127.0.0.1:5000/** to access the web interface.
+2. **Access the Web Interface**:
+    Open your browser and navigate to `http://127.0.0.1:5000/`
 
-3. Upload a VCF file, and the parser will process it. The output CSV and metadata file will be saved in the `data/processed/<timestamped-folder>/` directory.
+3. **Process VCF Files**:
+    i. Upload your VCF file through the web interface
+    ii. Select annotation type:
+        - *VEP*: Uses Ensembl's Variant Effect Predictor
+        - *dbNSFP*: Uses the dbNSFP database (academic or commercial)
+    iii. Submit for processing
 
-4. **(Optional) Running Test**:
+4. **View Results**:
+    - Results are stored in `data/processed/<timestamp>/`
+    - Download options available through the web interface
+    - Results include:
+      - Parsed variant data
+      - Annotation results
+      - Processing metadata
+
+5. **(Optional) Run Tests**
     To verify that the parsing functionality works as expected, use `pytest` to run the unit test `test_vcf_parser.py`:
     ```bash
     pytest tests/
@@ -76,6 +103,15 @@ The `vcf_parser.py` script parses VCF files, extracts metadata, and saves the va
     This will run all tests in the `tests/` directory. A successful test run confirms that the parser correctly reads the VCF data and stores it in the desired format.
 
 ## Project Status
-This project is in the initial stages of development. Currently, only VCF parsing and storing functionality is implemented. Future stages will include data filtering, variant annotation, and web interface development.
+This project is in the initial stages of development. The project currently supports:
+- VCF file parsing
+- Dual annotation pathways (VEP and dbNSFP)
+- Web interface for file processing
+- Results visualization and download
 
-
+Future developments will include:
+- Advanced filtering options
+- Batch processing
+- Additional annotation sources
+- Enhanced visualization
+- Machine learning integration

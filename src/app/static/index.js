@@ -23,13 +23,21 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        //to display loading spinner
+        //FIX: to GET selected annotation type
+        const selectedAnnotationType = document.querySelector('input[name="annotation_type"]:checked');
+        if (!selectedAnnotationType) {
+            showError('Please select an annotation type');
+            return;
+        }
+
+        //to display loading spinner and hide other elements
         loadingSpinner.style.display = 'block';
         errorMessage.style.display = 'none';
         resultsContainer.style.display = 'none';
 
         const formData = new FormData();
         formData.append('vcf_file', fileInput.files[0]);
+        formData.append('annotation_type', selectedAnnotationType.value);
 
         try {
             //upload and process file
@@ -44,8 +52,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(result.error || 'Failed to process file');
             }
 
-            //fetch and display results!
-            await fetchResults(result.timestamp);
+            //start polling for status
+            await pollStatus(result.timestamp, result.annotation_type);
 
         } catch (error) {
             showError(error.message);
@@ -54,10 +62,30 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    //fetch and display results!
-    async function fetchResults(timestamp) {
+    //poll for processing status
+    async function pollStatus(timestamp, annotationType) {
         try {
-            const response = await fetch(`/get_results/${timestamp}`);
+            const response = await fetch(`/status/${timestamp}`);
+            const result = await response.json();
+
+            if (result.status === 'completed') {
+                //to fetch results when processing is complete
+                await fetchResults(timestamp, annotationType);
+            } else if (result.status === 'processing') {
+                // NOTE: polling every 2 seconds
+                setTimeout(() => pollStatus(timestamp, annotationType), 2000);
+            } else if (result.status === 'error') {
+                throw new Error(result.message || 'Processing failed');
+            }
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+
+    //fetch and display results
+    async function fetchResults(timestamp, annotationType) {
+        try {
+            const response = await fetch(`/get_results/${timestamp}?type=${annotationType}`);
             const result = await response.json();
 
             if (!response.ok) {
@@ -80,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function() {
         columns.forEach(column => {
             const th = document.createElement('th');
             th.textContent = column;
-            th.title = column; // Add tooltip for long column names
+            th.title = column; //adding tooltip for long column names
             headerRow.appendChild(th);
         });
         resultsTable.querySelector('thead').appendChild(headerRow);
@@ -93,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 td.textContent = cellContent;
                 td.title = cellContent; //adding tooltip for full content
                 
-                //adding expandable class if content is long
+                //adding expandable class for long content
                 //so you can click on the cell, and it will expand
                 //try it on INFO field cell of any row
                 if (cellContent.length > 50) {
@@ -138,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    //added column sorting functionality!
+    //added column sorting functionality
     function sortTable(columnIndex) {
         const tbody = resultsTable.querySelector('tbody');
         const rows = Array.from(tbody.querySelectorAll('tr'));
