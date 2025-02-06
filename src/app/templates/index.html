@@ -9,69 +9,70 @@
 </head>
 <body>
     <div class="container">
-        <h1>Genetic Disorder Detection: VCF Parser & Annotator</h1>
+        <header class="app-header">
+            <h1><i class="fas fa-dna header-icon"></i>Genetic Disorder Detection</h1>
+            <p class="subtitle">a BARC Initiative</p>
+        </header>
         
         <div class="upload-section">
             <form id="upload-form" enctype="multipart/form-data">
-                <div class="upload-icon">
-                    <i class="fas fa-dna"></i>
-                </div>
-                
-                <!-- Added Annotation Type Selection -->
                 <div class="annotation-selection">
-                    <label>Select Annotation Type</label>
+                    <h2>Select Annotation Type</h2>
                     <div class="annotation-options">
                         <div class="annotation-option">
                             <input type="radio" id="vep" name="annotation_type" value="vep">
-                            <label for="vep">
+                            <label for="vep" class="option-card">
                                 <i class="fas fa-database"></i>
-                                <span>VEP</span>
+                                <span class="option-title">VEP</span>
                                 <small>Ensembl Variant Effect Predictor</small>
                             </label>
                         </div>
                         <div class="annotation-option">
                             <input type="radio" id="dbnsfp" name="annotation_type" value="dbnsfp" checked>
-                            <label for="dbnsfp">
+                            <label for="dbnsfp" class="option-card">
                                 <i class="fas fa-project-diagram"></i>
-                                <span>dbNSFP</span>
+                                <span class="option-title">dbNSFP</span>
                                 <small>Database for Functional Predictions</small>
                             </label>
                         </div>
                     </div>
                 </div>
                 
-                <label>Choose a VCF file to analyze</label>
-                <div class="file-input-wrapper">
-                    <label class="custom-file-upload">
-                        <i class="fas fa-upload"></i> Upload VCF File
-                        <input type="file" id="vcf_file" name="vcf_file" accept=".vcf">
-                    </label>
-                    <div id="file-name">No file chosen</div>
+                <div class="file-upload-section">
+                    <h2>Upload VCF File</h2>
+                    <div class="file-input-wrapper">
+                        <label class="custom-file-upload">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <span>Choose File</span>
+                            <input type="file" id="vcf_file" name="vcf_file" accept=".vcf">
+                        </label>
+                        <div id="file-name">No file chosen</div>
+                    </div>
                 </div>
                 <div class="button-group">
-                    <button type="submit" id="process-btn">
-                        <i class="fas fa-cogs"></i> Process File
-                    </button>
+                <button type="submit" id="process-btn">
+                    <i class="fas fa-cogs"></i> Process File
+                </button>
                 </div>
             </form>
         </div>
 
         <div id="loading" class="loading-spinner" style="display: none;">
             <div class="spinner"></div>
-            <p>Processing file...</p>
+            <p>Processing your genetic data...</p>
         </div>
 
         <div id="error-message" class="error-message" style="display: none;"></div>
 
         <div id="results-container" style="display: none;">
             <div class="results-header">
-                <h2>Results</h2>
-                <button id="close-results" class="close-btn">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="results-controls">
-                <input type="text" id="table-search" class="table-search" placeholder="Search results...">
+                <h2><i class="fas fa-chart-bar"></i> Analysis Results</h2>
+                <div class="header-controls">
+                    <input type="text" id="table-search" class="table-search" placeholder="Search results...">
+                    <button id="close-results" class="close-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
             <div class="table-wrapper">
                 <table id="results-table">
