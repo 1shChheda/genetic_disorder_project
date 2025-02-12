@@ -165,7 +165,19 @@ def get_results(timestamp):
         if not os.path.exists(results_file):
             return jsonify({'error': 'Results not found'}), 404
         
-        df = pd.read_csv(results_file)
+        # read the tab-separated file correctly
+        # df = pd.read_csv(results_file, sep='\t', comment='#', na_values='.')
+
+        df = pd.read_csv(
+            results_file,
+            sep='\t',              #using tab as delimiter
+            comment=None,          #don't treat # as comment!
+            quoting=3,            # QUOTE_NONE - Don't use quotes
+            dtype=str             #reading all columns as strings initially to preserve values
+        )
+        
+        # Clean up column names by removing '#' if present
+        # df.columns = [col.replace('#', '') for col in df.columns]
         
         # Handle data types for JSON serialization
         df = df.replace({np.nan: None})
@@ -202,8 +214,27 @@ def download_results(timestamp):
         if not os.path.exists(results_file):
             return jsonify({'error': 'Results file not found'}), 404
         
-        return send_file(
+        #read and write the file to ensure consistent formatting
+        df = pd.read_csv(
             results_file,
+            sep='\t',
+            comment=None,
+            quoting=3,
+            dtype=str
+        )
+        
+        #creating a temporary file with proper formatting
+        temp_file = os.path.join(
+            Config.PROCESSED_FOLDER,
+            timestamp,
+            f'temp_{annotation_type}_annotated_variants.csv'
+        )
+        
+        # Save with tab separator and without index
+        df.to_csv(temp_file, sep='\t', index=False, quoting=3)
+        
+        return send_file(
+            temp_file,
             as_attachment=True,
             download_name=f'{annotation_type}_annotated_variants_{timestamp}.csv',
             mimetype='text/csv'
