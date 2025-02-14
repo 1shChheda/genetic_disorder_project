@@ -10,36 +10,37 @@ Currently, it supports two annotation methods:
 ```
 genetic_disorder_detection_project/
 ├── data/                           # Data storage directory
+│   ├── dbnsfp/                     # Default dbNSFP database directory
 │   ├── raw/                        # Raw input VCF files
 │   └── processed/                  # Processed output files
 │       └── <timestamped-folder>/   # Unique folder for each run
 │           ├── parsed_variants.csv
 │           ├── annotated_variants.csv
 │           └── metadata.txt
-├── src/                           # Source code
-│   ├── parser/                    # VCF parsing modules
+├── src/                            # Source code
+│   ├── parser/                     # VCF parsing modules
 │   │   ├── __init__.py
-│   │   ├── base_parser.py        # Abstract base parser
-│   │   ├── vep_parser.py         # VEP-specific parser
-│   │   └── dbnsfp_parser.py      # dbNSFP-specific parser
-│   ├── annotator/                 # Variant annotation modules
+│   │   ├── base_parser.py          # Abstract base parser
+│   │   ├── vep_parser.py           # VEP-specific parser
+│   │   └── dbnsfp_parser.py        # dbNSFP-specific parser
+│   ├── annotator/                  # Variant annotation modules
 │   │   ├── __init__.py
-│   │   ├── base_annotator.py     # Abstract base annotator
-│   │   ├── vep_annotator.py      # VEP API implementation
-│   │   ├── dbnsfp_annotator.py   # dbNSFP API implementation
-│   │   └── annotation_service.py  # Workflow orchestration
-│   └── app/                       # Web application
-│       ├── templates/             # HTML templates
-│       ├── static/               # Static assets
-│       └── app.py                # Flask application
-├── tests/                        # Unit tests
+│   │   ├── base_annotator.py       # Abstract base annotator
+│   │   ├── vep_annotator.py        # VEP API implementation
+│   │   ├── dbnsfp_annotator.py     # dbNSFP implementation
+│   │   └── annotation_service.py   # Workflow orchestration
+│   └── app/                        # Web application
+│       ├── templates/              # HTML templates
+│       ├── static/                 # Static assets
+│       └── app.py                  # Flask application
+├── tests/                          # Unit tests
 │   ├── __init__.py
-│   └── test_vcf_parser.py       # Parser tests
-├── logs/                        # Application logs
-├── venv/                       # Virtual environment (Linux)
-├── .venv/                      # Virtual environment (Windows)
-├── requirements.txt            # Python dependencies
-└── README.md                   # Project documentation
+│   └── test_vcf_parser.py          # Parser tests
+├── logs/                           # Application logs
+├── venv/                           # Virtual environment (Linux)
+├── .venv/                          # Virtual environment (Windows)
+├── requirements.txt                # Python dependencies
+└── README.md                       # Project documentation
 ```
 
 ## Setup Instructions
@@ -70,6 +71,29 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### 4. Download and Set Up dbNSFP Database
+The dbNSFP database is required for annotation. Follow these steps to download and extract it:
+
+1. **Visit the dbNSFP Download Page**:
+   - Navigate to [dbNSFP Download Page](https://sites.google.com/site/jpopgen/dbNSFP).
+
+2. **Download the Database**:
+   - Locate the latest version of dbNSFP suitable for your needs. 
+   - RECOMMENDED VERSION: **dbNSFP v4.7**
+   - Download the appropriate compressed file (`.zip` or `.tar.gz`).
+
+3. **Extract the Database**:
+   - **For Linux**:
+     ```bash
+     mkdir -p data/dbnsfp
+     tar -xzvf dbNSFP*.tar.gz -C data/dbnsfp
+     ```
+   - **For Windows**:
+     - Use a file extraction tool (e.g., 7-Zip) to extract the contents of the downloaded archive.
+     - Extract the files into the `data\dbnsfp` directory within your project.
+
+By default, the application expects the dbNSFP database files to be located in the relative path `/data/dbnsfp`. If you choose a different directory, ensure you provide the correct path during usage.
+
 ## Usage
 
 1. **Start the Application**:
@@ -80,34 +104,30 @@ pip install -r requirements.txt
 2. **Access the Web Interface**:
     Open your browser and navigate to `http://127.0.0.1:5000/`
 
-3. **Process VCF Files**:
-    i. Upload your VCF file through the web interface
-    ii. Select annotation type:
-        - *VEP*: Uses Ensembl's Variant Effect Predictor
-        - *dbNSFP*: Uses the dbNSFP database (academic or commercial)
-    iii. Submit for processing
+3. **Database Path Configuration**:
+    - Specify the dbNSFP database directory path where you have stored/extracted the database. 
+    - By default, this is the relative path `/data/dbnsfp`.
 
-4. **View Results**:
-    - Results are stored in `data/processed/<timestamp>/`
-    - Download options available through the web interface
-    - Results include:
-      - Parsed variant data
-      - Annotation results
-      - Processing metadata
+4. **Process VCF Files**:
+    1. Upload your VCF file through the web interface.
+    2. Select annotation type:
+        - *VEP*: Uses Ensembl's Variant Effect Predictor.
+        - *dbNSFP*: Uses the dbNSFP database.
+    3. Submit for processing.
 
-5. **(Optional) Run Tests**
-    To verify that the parsing functionality works as expected, use `pytest` to run the unit test `test_vcf_parser.py`:
-    ```bash
-    pytest tests/
-    ```
-    This will run all tests in the `tests/` directory. A successful test run confirms that the parser correctly reads the VCF data and stores it in the desired format.
+5. **View and Download Results**:
+    - Once processing is complete, results will be displayed in the web interface.
+    - You can download the annotated results directly through the web interface by clicking the **Download Results** button.
+    - The downloaded file will be named in the format `<annotation_type>_annotated_variants_<timestamp>.csv`.
+
 
 ## Project Status
-This project is in the initial stages of development. The project currently supports:
+This project is in the initial stages of development. It currently supports:
 - VCF file parsing
 - Dual annotation pathways (VEP and dbNSFP)
+- Configurable dbNSFP database path
 - Web interface for file processing
-- Results visualization and download
+- Results visualization and download via a dedicated **Download Results** button
 
 Future developments will include:
 - Advanced filtering options

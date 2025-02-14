@@ -94,6 +94,17 @@ def home():
 def upload_file():
     # Handle file upload and initiate analysis
     try:
+
+        # Get and validate dbNSFP directory
+        dbnsfp_dir = request.form.get('dbnsfp_dir', Config.DBNSFP_DIR).strip()
+        
+        # Validate the provided directory
+        if not os.path.exists(dbnsfp_dir):
+            return jsonify({'error': f'dbNSFP directory not found: {dbnsfp_dir}'}), 400
+
+        # Log the dbNSFP directory being used
+        app.logger.info(f"Using dbNSFP directory: {dbnsfp_dir}")
+
         # Validate file existence
         if 'vcf_file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
@@ -125,7 +136,7 @@ def upload_file():
             workflow_config['clinvar_path'] = Config.CLINVAR_PATH
         elif annotation_type == 'dbnsfp':
             workflow_config.update({
-                'dbnsfp_dir': Config.DBNSFP_DIR,
+                'dbnsfp_dir': dbnsfp_dir,  #using the user provided dbnsfp directory
                 'genome_version': request.form.get('genome_version', Config.DEFAULT_GENOME_VERSION),
                 'memory': request.form.get('memory', Config.DEFAULT_JAVA_MEMORY)
             })
@@ -143,7 +154,8 @@ def upload_file():
             'annotation_type': annotation_type,
             'output_folder': result['output_folder'],
             'parsed_file': result['parsed_file'],
-            'annotated_file': result['annotated_file']
+            'annotated_file': result['annotated_file'],
+            'dbnsfp_dir': dbnsfp_dir
         })
         
     except Exception as e:

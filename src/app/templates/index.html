@@ -37,6 +37,27 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="database-config-section">
+                    <h2><i class="fas fa-database"></i> Database Configuration</h2>
+                    <div class="input-group">
+                        <div class="path-input-wrapper">
+                            <label for="dbnsfp_path">dbNSFP Directory Path:</label>
+                            <div class="path-input-container">
+                                <input type="text" 
+                                       id="dbnsfp_path" 
+                                       name="dbnsfp_path" 
+                                       class="path-input"
+                                       placeholder="/data/dbnsfp"
+                                       value="/data/dbnsfp">
+                                <button type="button" id="reset-path" class="reset-btn">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                            </div>
+                            <small class="path-hint">Default: /data/dbnsfp</small>
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="file-upload-section">
                     <h2>Upload VCF File</h2>
@@ -69,6 +90,9 @@
                 <h2><i class="fas fa-chart-bar"></i> Analysis Results</h2>
                 <div class="header-controls">
                     <input type="text" id="table-search" class="table-search" placeholder="Search results...">
+                    <button id="download-results" class="action-btn">
+                        <i class="fas fa-download"></i> Download Results
+                    </button>
                     <button id="close-results" class="close-btn">
                         <i class="fas fa-times"></i>
                     </button>

@@ -8,6 +8,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const resultsTable = document.getElementById('results-table');
     const closeResults = document.getElementById('close-results');
     const searchInput = document.getElementById('table-search');
+    const dbnsfpPathInput = document.getElementById('dbnsfp_path');
+    const resetPathBtn = document.getElementById('reset-path');
+    const downloadBtn = document.getElementById('download-results');
+
+
+    //to keep track of current result timestamp
+    let currentResultTimestamp = null;
+    const DEFAULT_DBNSFP_PATH = '/data/dbnsfp';
+    
+    //handle path reset
+    resetPathBtn.addEventListener('click', function() {
+        dbnsfpPathInput.value = DEFAULT_DBNSFP_PATH;
+    });
 
     //file input change handler
     fileInput.addEventListener('change', function(e) {
@@ -35,9 +48,13 @@ document.addEventListener('DOMContentLoaded', function() {
         errorMessage.style.display = 'none';
         resultsContainer.style.display = 'none';
 
-        const formData = new FormData();
+        const formData = new FormData(uploadForm);
         formData.append('vcf_file', fileInput.files[0]);
         formData.append('annotation_type', selectedAnnotationType.value);
+
+        //adding the dbNSFP path to form data
+        const dbnsfpPath = dbnsfpPathInput.value.trim() || DEFAULT_DBNSFP_PATH;
+        formData.append('dbnsfp_dir', dbnsfpPath);
 
         try {
             //upload and process file
@@ -51,6 +68,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!response.ok) {
                 throw new Error(result.error || 'Failed to process file');
             }
+
+            //store the timestamp for download
+            currentResultTimestamp = result.timestamp;
 
             //start polling for status
             await pollStatus(result.timestamp, result.annotation_type);
@@ -141,6 +161,36 @@ document.addEventListener('DOMContentLoaded', function() {
         //scroll to results
         resultsContainer.scrollIntoView({ behavior: 'smooth' });
     }
+
+    //handle results download
+    downloadBtn.addEventListener('click', async function() {
+        if (!currentResultTimestamp) {
+            alert('No results available for download');
+            return;
+        }
+        
+        try {
+            const annotationType = document.querySelector('input[name="annotation_type"]:checked').value;
+            const response = await fetch(`/download_results/${currentResultTimestamp}?type=${annotationType}`);
+            
+            if (!response.ok) {
+                throw new Error('Download failed');
+            }
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${annotationType}_annotated_variants_${currentResultTimestamp}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+        } catch (error) {
+            alert('Error downloading results: ' + error.message);
+        }
+    });
 
     //show error message
     function showError(message) {
