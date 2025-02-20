@@ -17,11 +17,27 @@ class Config:
     LOG_FOLDER = os.path.join(os.getcwd(), 'logs')
     
     # DbNSFP specific configuration
-    DBNSFP_DIR = os.path.join(os.getcwd(), 'data/dbnsfp')
+    DBNSFP_DIR = os.path.join(os.getcwd(), 'data', 'dbnsfp')
+    DEFAULT_DBNSFP_PATH = '/data/dbnsfp'  #default path shown in UI
     DBNSFP_GENOME_VERSIONS = ['hg18', 'hg19', 'hg38']
     DEFAULT_GENOME_VERSION = 'hg38'
     DEFAULT_JAVA_MEMORY = '5g'
     
+    @staticmethod
+    def resolve_dbnsfp_path(path):
+        # TO Resolve the dbNSFP directory path
+        # handle both relative and absolute paths
+
+        if path == Config.DEFAULT_DBNSFP_PATH:
+            # If using default path, resolve it relative to current working directory
+            return Config.DBNSFP_DIR
+        elif os.path.isabs(path):
+            # If absolute path provided, use it as is
+            return path
+        else:
+            # If relative path provided, resolve it relative to current working directory
+            return os.path.join(os.getcwd(), path)
+
     @classmethod
     def validate_paths(cls):
 
@@ -32,23 +48,23 @@ class Config:
             os.makedirs(path, exist_ok=True)
     
     @classmethod
-    def validate_dbnsfp(cls):
-
+    def validate_dbnsfp(cls, custom_path=None):
         # Validate DbNSFP setup
-
-        if not os.path.exists(cls.DBNSFP_DIR):
-            raise FileNotFoundError(f"DbNSFP directory not found: {cls.DBNSFP_DIR}")
+        dbnsfp_dir = custom_path if custom_path else cls.DBNSFP_DIR
+        
+        if not os.path.exists(dbnsfp_dir):
+            raise FileNotFoundError(f"DbNSFP directory not found: {dbnsfp_dir}")
         
         # Check for required Java program
-        java_file = os.path.join(cls.DBNSFP_DIR, 'search_dbNSFP47a.class')
+        java_file = os.path.join(dbnsfp_dir, 'search_dbNSFP47a.class')
         if not os.path.exists(java_file):
             raise FileNotFoundError(f"DbNSFP Java program not found: {java_file}")
         
         # Check for at least one chromosome file
-        chr_files = [f for f in os.listdir(cls.DBNSFP_DIR) 
+        chr_files = [f for f in os.listdir(dbnsfp_dir) 
                     if f.startswith('dbNSFP4.7a_variant.chr') and f.endswith('.gz')]
         if not chr_files:
-            raise FileNotFoundError("No dbNSFP chromosome files found")
+            raise FileNotFoundError(f"No dbNSFP chromosome files found: {dbnsfp_dir}")
 
 def setup_logging(app):
 
@@ -77,7 +93,7 @@ app = Flask(__name__)
 # Initialize configuration and logging
 try:
     Config.validate_paths()
-    Config.validate_dbnsfp()
+    # Config.validate_dbnsfp()
     setup_logging(app)
 except Exception as e:
     print(f"Initialization error: {e}")
@@ -92,18 +108,18 @@ def home():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # Handle file upload and initiate analysis
     try:
-
         # Get and validate dbNSFP directory
-        dbnsfp_dir = request.form.get('dbnsfp_dir', Config.DBNSFP_DIR).strip()
+        dbnsfp_dir = request.form.get('dbnsfp_dir', Config.DEFAULT_DBNSFP_PATH).strip()
+        
+        # Resolve the path (convert relative to absolute if needed)
+        resolved_dbnsfp_dir = Config.resolve_dbnsfp_path(dbnsfp_dir)
         
         # Validate the provided directory
-        if not os.path.exists(dbnsfp_dir):
-            return jsonify({'error': f'dbNSFP directory not found: {dbnsfp_dir}'}), 400
-
+        Config.validate_dbnsfp(resolved_dbnsfp_dir)
+        
         # Log the dbNSFP directory being used
-        app.logger.info(f"Using dbNSFP directory: {dbnsfp_dir}")
+        app.logger.info(f"Using dbNSFP directory: {resolved_dbnsfp_dir}")
 
         # Validate file existence
         if 'vcf_file' not in request.files:
@@ -136,7 +152,7 @@ def upload_file():
             workflow_config['clinvar_path'] = Config.CLINVAR_PATH
         elif annotation_type == 'dbnsfp':
             workflow_config.update({
-                'dbnsfp_dir': dbnsfp_dir,  #using the user provided dbnsfp directory
+                'dbnsfp_dir': resolved_dbnsfp_dir,  #using the user provided dbnsfp directory
                 'genome_version': request.form.get('genome_version', Config.DEFAULT_GENOME_VERSION),
                 'memory': request.form.get('memory', Config.DEFAULT_JAVA_MEMORY)
             })
@@ -201,6 +217,18 @@ def get_results(timestamp):
         # Round floating point numbers
         for col in df.select_dtypes(include=['float64']).columns:
             df[col] = df[col].round(4)
+
+# TO RE-FORMAT OG ANNOTATED FILE (to properly separate fields in different columns IN THE OG FILE ITSELF)
+        #read original messed-up annotated_variants file
+        with open(results_file, 'r', encoding='utf-8') as infile:
+            lines = infile.readlines()
+        
+        #replace "tabs" with "commas" ---
+        converted_lines = [line.replace('\t', ',') for line in lines]
+
+        #saving the csv file
+        with open(results_file, 'w', encoding='utf-8') as outfile:
+            outfile.writelines(converted_lines)
         
         return jsonify({
             'success': True,
@@ -214,7 +242,6 @@ def get_results(timestamp):
 
 @app.route('/download_results/<timestamp>')
 def download_results(timestamp):
-    # Download analysis results
     try:
         annotation_type = request.args.get('type', 'dbnsfp')
         results_file = os.path.join(
@@ -226,27 +253,25 @@ def download_results(timestamp):
         if not os.path.exists(results_file):
             return jsonify({'error': 'Results file not found'}), 404
         
-        #read and write the file to ensure consistent formatting
-        df = pd.read_csv(
-            results_file,
-            sep='\t',
-            comment=None,
-            quoting=3,
-            dtype=str
-        )
+        # #read original messed-up annotated_variants file ---
+        # with open(results_file, 'r', encoding='utf-8') as infile:
+        #     lines = infile.readlines()
         
-        #creating a temporary file with proper formatting
-        temp_file = os.path.join(
-            Config.PROCESSED_FOLDER,
-            timestamp,
-            f'temp_{annotation_type}_annotated_variants.csv'
-        )
+        # #replace "tabs" with "commas" ---
+        # converted_lines = [line.replace('\t', ',') for line in lines]
         
-        # Save with tab separator and without index
-        df.to_csv(temp_file, sep='\t', index=False, quoting=3)
+        # temp_file = os.path.join(
+        #     Config.PROCESSED_FOLDER,
+        #     timestamp,
+        #     f'temp_{annotation_type}_annotated_variants.csv'
+        # )
+        
+        # #saving the csv file
+        # with open(temp_file, 'w', encoding='utf-8') as outfile:
+        #     outfile.writelines(converted_lines)
         
         return send_file(
-            temp_file,
+            results_file,
             as_attachment=True,
             download_name=f'{annotation_type}_annotated_variants_{timestamp}.csv',
             mimetype='text/csv'
@@ -255,6 +280,7 @@ def download_results(timestamp):
     except Exception as e:
         app.logger.error(f"Error downloading results: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/status/<timestamp>')
 def get_status(timestamp):

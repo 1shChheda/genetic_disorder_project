@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     //to keep track of current result timestamp
     let currentResultTimestamp = null;
     const DEFAULT_DBNSFP_PATH = '/data/dbnsfp';
+    dbnsfpPathInput.value = DEFAULT_DBNSFP_PATH;
     
     //handle path reset
     resetPathBtn.addEventListener('click', function() {
@@ -54,7 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         //adding the dbNSFP path to form data
         const dbnsfpPath = dbnsfpPathInput.value.trim() || DEFAULT_DBNSFP_PATH;
-        formData.append('dbnsfp_dir', dbnsfpPath);
+        const normalizedPath = dbnsfpPath.replace(/\\/g, '/'); //normalizing path separators for consistency
+        formData.append('dbnsfp_dir', normalizedPath);
 
         try {
             //upload and process file
