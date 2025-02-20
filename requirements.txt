@@ -5,3 +5,4 @@ pytest
 scikit-allel
 tqdm
 bs4
+psutil

@@ -28,6 +28,41 @@ document.addEventListener('DOMContentLoaded', function() {
         fileName.textContent = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
     });
 
+// CANCEL PROCESS stuff 
+    let currentProcessKey = null;
+
+    // adding cancel button to loading spinner
+    const cancelButton = document.createElement('button');
+    cancelButton.id = 'cancel-process';
+    cancelButton.className = 'cancel-btn';
+    cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancel Process';
+    loadingSpinner.appendChild(cancelButton);
+
+    //handle process cancellation
+    cancelButton.addEventListener('click', async function() {
+        if (!currentProcessKey) return;
+        
+        try {
+            const response = await fetch(`/cancel_process/${currentProcessKey}`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to cancel process');
+            }
+            
+            // Reset UI
+            loadingSpinner.style.display = 'none';
+            errorMessage.style.display = 'none';
+            showMessage('Process cancelled successfully');
+            
+        } catch (error) {
+            showError(error.message);
+        }
+    });
+
     //form submission handler
     uploadForm.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -74,9 +109,11 @@ document.addEventListener('DOMContentLoaded', function() {
             //store the timestamp for download
             currentResultTimestamp = result.timestamp;
 
-            //start polling for status
-            await pollStatus(result.timestamp, result.annotation_type);
+            currentProcessKey = result.process_key;
 
+            //start polling for status
+            await pollStatus(result.process_key, result.timestamp, result.annotation_type);
+            
         } catch (error) {
             showError(error.message);
         } finally {
@@ -85,22 +122,33 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     //poll for processing status
-    async function pollStatus(timestamp, annotationType) {
+    async function pollStatus(processKey, timestamp, annotationType) {
         try {
-            const response = await fetch(`/status/${timestamp}`);
+            const response = await fetch(`/process_status/${processKey}`);
             const result = await response.json();
-
-            if (result.status === 'completed') {
-                //to fetch results when processing is complete
-                await fetchResults(timestamp, annotationType);
-            } else if (result.status === 'processing') {
-                // NOTE: polling every 2 seconds
-                setTimeout(() => pollStatus(timestamp, annotationType), 2000);
-            } else if (result.status === 'error') {
-                throw new Error(result.message || 'Processing failed');
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to check status');
             }
+            
+            switch (result.status) {
+                case 'completed':
+                    await fetchResults(timestamp, annotationType);
+                    break;
+                case 'cancelled':
+                    loadingSpinner.style.display = 'none';
+                    showMessage('Process was cancelled');
+                    break;
+                case 'error':
+                    throw new Error('Processing failed');
+                case 'running':
+                    setTimeout(() => pollStatus(processKey, timestamp, annotationType), 2000);
+                    break;
+            }
+            
         } catch (error) {
             showError(error.message);
+            loadingSpinner.style.display = 'none';
         }
     }
 
@@ -193,6 +241,29 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error downloading results: ' + error.message);
         }
     });
+
+    //adding a beforeunload handler for tab close
+    window.addEventListener('beforeunload', async function(e) {
+        if (currentProcessKey) {
+            try {
+                await fetch(`/cancel_process/${currentProcessKey}`, {
+                    method: 'POST',
+                    keepalive: true  // Ensure request completes even if page is closing
+                });
+            } catch (error) {
+                console.error('Failed to cancel process:', error);
+            }
+        }
+    });
+
+    //message display function
+    function showMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message';
+        messageDiv.textContent = message;
+        document.querySelector('.container').appendChild(messageDiv);
+        setTimeout(() => messageDiv.remove(), 5000);
+    }
 
     //show error message
     function showError(message) {

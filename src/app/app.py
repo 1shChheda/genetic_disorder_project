@@ -1,9 +1,13 @@
 import os
-from datetime import datetime
-from flask import Flask, request, render_template, jsonify, send_file
+from datetime import datetime, timedelta
+import time
+import threading
+from flask import Flask, request, render_template, jsonify, send_file, session
 import pandas as pd
 import numpy as np
 from src.annotator.annotation_service import AnnotationWorkflow
+from src.process.process_manager import process_manager
+from src.session.session_manager import session_manager
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -90,6 +94,18 @@ def setup_logging(app):
 
 app = Flask(__name__)
 
+#adding a secret key for session management
+# In a production env, this should be a secure random key stored in environment variables
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev_key_h7j3k2h5j2k5h7j2k5h72jk5')
+
+# security settings (optional, but i recommend)
+app.config.update(
+    SESSION_COOKIE_SECURE=True,      # only send cookies over HTTPS
+    SESSION_COOKIE_HTTPONLY=True,    # prevent javaScript access to session cookie
+    SESSION_COOKIE_SAMESITE='Lax',   # Protect against CSRF (imp)
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24)  # session expiry time
+)
+
 # Initialize configuration and logging
 try:
     Config.validate_paths()
@@ -98,6 +114,13 @@ try:
 except Exception as e:
     print(f"Initialization error: {e}")
     raise
+
+@app.before_request
+def before_request():
+    # THis will ensure session exists and is valid
+    if 'session_id' not in session:
+        session['session_id'] = session_manager.create_session()
+    session_manager.update_session_activity(session['session_id'])
 
 @app.route('/')
 def home():
@@ -137,8 +160,21 @@ def upload_file():
         if not annotation_type or annotation_type not in ['dbnsfp', 'vep']:
             return jsonify({'error': 'Invalid or missing annotation type'}), 400
         
-        # Save uploaded file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Create unique process identifier
+        process_key = process_manager.start_process(
+            session['session_id'],
+            timestamp,
+            annotation_type,
+            input_path,
+            os.path.join(Config.PROCESSED_FOLDER, timestamp)
+        )
+
+        # Associate process with session (IMPORTANT to understand)
+        session_manager.add_process_to_session(session['session_id'], process_key)
+
+        # Save uploaded file
         input_filename = f"{timestamp}_{file.filename}"
         input_path = os.path.join(Config.UPLOAD_FOLDER, input_filename)
         file.save(input_path)
@@ -162,9 +198,12 @@ def upload_file():
         result = workflow.process(input_path, Config.PROCESSED_FOLDER)
         
         app.logger.info(f"File processed successfully: {input_filename}")
+
+        process_manager.update_process_status(process_key, 'completed')
         
         return jsonify({
             'success': True,
+            'process_key': process_key,
             'message': 'File processed successfully',
             'timestamp': result['timestamp'],
             'annotation_type': annotation_type,
@@ -175,8 +214,48 @@ def upload_file():
         })
         
     except Exception as e:
+        if 'process_key' in locals():
+            process_manager.update_process_status(process_key, 'error')
         app.logger.error(f"Error processing upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/cancel_process/<process_key>', methods=['POST'])
+def cancel_process():
+
+    # Cancel a running process
+
+    process_key = request.view_args['process_key']
+    
+    if process_manager.cancel_process(process_key):
+        session_manager.remove_process_from_session(session['session_id'], process_key)
+        return jsonify({'success': True, 'message': 'Process cancelled successfully'})
+    else:
+        return jsonify({'error': 'Failed to cancel process'}), 400
+
+@app.route('/process_status/<process_key>')
+def get_process_status():
+
+    # Get current status of a process
+
+    process_key = request.view_args['process_key']
+    status = process_manager.get_process_status(process_key)
+    
+    if status:
+        return jsonify({'status': status})
+    else:
+        return jsonify({'error': 'Process not found'}), 404
+
+# adding cleanup task
+def cleanup_task():
+    # Periodic cleanup of old processes and sessions (NICEEEE idea)
+    while True:
+        process_manager.cleanup_old_processes()
+        session_manager.cleanup_inactive_sessions()
+        time.sleep(3600)  # this will run every hour
+
+# start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
+cleanup_thread.start()
 
 @app.route('/get_results/<timestamp>')
 def get_results(timestamp):
