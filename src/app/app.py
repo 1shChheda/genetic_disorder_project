@@ -3,85 +3,336 @@ from datetime import datetime
 from flask import Flask, request, render_template, jsonify, send_file
 import pandas as pd
 import numpy as np
-from src.parser.vcf_parser import parse_vcf
-from src.annotator.vep_annotator import annotate_variants
+from src.annotator.annotation_service import AnnotationWorkflow
+import logging
+from logging.handlers import RotatingFileHandler
+
+class Config:
+
+    # Application configuration!
+
+    UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data/raw')
+    PROCESSED_FOLDER = os.path.join(os.getcwd(), 'data/processed')
+    CLINVAR_PATH = os.path.join(os.getcwd(), 'data/clinvar/clinvar.vcf')
+    LOG_FOLDER = os.path.join(os.getcwd(), 'logs')
+    
+    # DbNSFP specific configuration
+    DBNSFP_DIR = os.path.join(os.getcwd(), 'data', 'dbnsfp')
+    DEFAULT_DBNSFP_PATH = '/data/dbnsfp'  #default path shown in UI
+    DBNSFP_GENOME_VERSIONS = ['hg18', 'hg19', 'hg38']
+    DEFAULT_GENOME_VERSION = 'hg38'
+    DEFAULT_JAVA_MEMORY = '5g'
+    
+    @staticmethod
+    def resolve_dbnsfp_path(path):
+        # TO Resolve the dbNSFP directory path
+        # handle both relative and absolute paths
+
+        if path == Config.DEFAULT_DBNSFP_PATH:
+            # If using default path, resolve it relative to current working directory
+            return Config.DBNSFP_DIR
+        elif os.path.isabs(path):
+            # If absolute path provided, use it as is
+            return path
+        else:
+            # If relative path provided, resolve it relative to current working directory
+            return os.path.join(os.getcwd(), path)
+
+    @classmethod
+    def validate_paths(cls):
+
+        # Ensure all required directories exist
+
+        for path in [cls.UPLOAD_FOLDER, cls.PROCESSED_FOLDER, 
+                    os.path.dirname(cls.CLINVAR_PATH), cls.LOG_FOLDER]:
+            os.makedirs(path, exist_ok=True)
+    
+    @classmethod
+    def validate_dbnsfp(cls, custom_path=None):
+        # Validate DbNSFP setup
+        dbnsfp_dir = custom_path if custom_path else cls.DBNSFP_DIR
+        
+        if not os.path.exists(dbnsfp_dir):
+            raise FileNotFoundError(f"DbNSFP directory not found: {dbnsfp_dir}")
+        
+        # Check for required Java program
+        java_file = os.path.join(dbnsfp_dir, 'search_dbNSFP47a.class')
+        if not os.path.exists(java_file):
+            raise FileNotFoundError(f"DbNSFP Java program not found: {java_file}")
+        
+        # Check for at least one chromosome file
+        chr_files = [f for f in os.listdir(dbnsfp_dir) 
+                    if f.startswith('dbNSFP4.7a_variant.chr') and f.endswith('.gz')]
+        if not chr_files:
+            raise FileNotFoundError(f"No dbNSFP chromosome files found: {dbnsfp_dir}")
+
+def setup_logging(app):
+
+    # Configure application logging
+
+    if not app.debug:
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+        
+        file_handler = RotatingFileHandler(
+            'logs/genetic_app.log', 
+            maxBytes=10240000, 
+            backupCount=10
+        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+        
+        app.logger.setLevel(logging.INFO)
+        app.logger.info('Genetic Analysis App startup')
 
 app = Flask(__name__)
 
-#PATHS
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'data/raw')
-PROCESSED_FOLDER = os.path.join(os.getcwd(), 'data/processed')
-
-#to ensure directories exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PROCESSED_FOLDER, exist_ok=True)
+# Initialize configuration and logging
+try:
+    Config.validate_paths()
+    # Config.validate_dbnsfp()
+    setup_logging(app)
+except Exception as e:
+    print(f"Initialization error: {e}")
+    raise
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    # Render home page with configuration options
+    return render_template('index.html', 
+                         genome_versions=Config.DBNSFP_GENOME_VERSIONS,
+                         default_genome=Config.DEFAULT_GENOME_VERSION)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'vcf_file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    
-    file = request.files['vcf_file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if not file.filename.endswith('.vcf'):
-        return jsonify({'error': 'Invalid file type. Please upload a VCF file'}), 400
-
     try:
-        #saving uploaded input file
+        # Get and validate dbNSFP directory
+        dbnsfp_dir = request.form.get('dbnsfp_dir', Config.DEFAULT_DBNSFP_PATH).strip()
+        
+        # Resolve the path (convert relative to absolute if needed)
+        resolved_dbnsfp_dir = Config.resolve_dbnsfp_path(dbnsfp_dir)
+        
+        # Validate the provided directory
+        Config.validate_dbnsfp(resolved_dbnsfp_dir)
+        
+        # Log the dbNSFP directory being used
+        app.logger.info(f"Using dbNSFP directory: {resolved_dbnsfp_dir}")
+
+        # Validate file existence
+        if 'vcf_file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+            
+        file = request.files['vcf_file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+            
+        if not file.filename.endswith('.vcf'):
+            return jsonify({'error': 'Invalid file type. Please upload a VCF file'}), 400
+        
+        # Get annotation configuration
+        annotation_type = request.form.get('annotation_type')
+        if not annotation_type or annotation_type not in ['dbnsfp', 'vep']:
+            return jsonify({'error': 'Invalid or missing annotation type'}), 400
+        
+        # Save uploaded file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         input_filename = f"{timestamp}_{file.filename}"
-        input_path = os.path.join(UPLOAD_FOLDER, input_filename)
-        
+        input_path = os.path.join(Config.UPLOAD_FOLDER, input_filename)
         file.save(input_path)
-
-        # Step 1: Parse VCF
-        output_folder = parse_vcf(input_vcf=input_path, output_dir=PROCESSED_FOLDER)
         
-        # Step 2: Annotate variants
-        parsed_csv = os.path.join(output_folder, 'parsed_variants.csv')
-        annotated_csv = os.path.join(output_folder, 'annotated_variants.csv')
-        annotate_variants(parsed_csv, annotated_csv)
-
+        # Prepare workflow configuration
+        workflow_config = {
+            'annotation_type': annotation_type
+        }
+        
+        if annotation_type == 'vep':
+            workflow_config['clinvar_path'] = Config.CLINVAR_PATH
+        elif annotation_type == 'dbnsfp':
+            workflow_config.update({
+                'dbnsfp_dir': resolved_dbnsfp_dir,  #using the user provided dbnsfp directory
+                'genome_version': request.form.get('genome_version', Config.DEFAULT_GENOME_VERSION),
+                'memory': request.form.get('memory', Config.DEFAULT_JAVA_MEMORY)
+            })
+        
+        # Initialize and run workflow
+        workflow = AnnotationWorkflow(**workflow_config)
+        result = workflow.process(input_path, Config.PROCESSED_FOLDER)
+        
+        app.logger.info(f"File processed successfully: {input_filename}")
+        
         return jsonify({
             'success': True,
             'message': 'File processed successfully',
-            'timestamp': timestamp
+            'timestamp': result['timestamp'],
+            'annotation_type': annotation_type,
+            'output_folder': result['output_folder'],
+            'parsed_file': result['parsed_file'],
+            'annotated_file': result['annotated_file'],
+            'dbnsfp_dir': dbnsfp_dir
         })
-
+        
     except Exception as e:
+        app.logger.error(f"Error processing upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-#for getting & displaying the results
 @app.route('/get_results/<timestamp>')
 def get_results(timestamp):
+    # Retrieve analysis results
     try:
-        annotated_file = os.path.join(PROCESSED_FOLDER, timestamp, 'annotated_variants.csv')
-        if not os.path.exists(annotated_file):
+        annotation_type = request.args.get('type', 'dbnsfp')
+        
+        results_file = os.path.join(
+            Config.PROCESSED_FOLDER,
+            timestamp,
+            f'{annotation_type}_annotated_variants.csv'
+        )
+        
+        if not os.path.exists(results_file):
             return jsonify({'error': 'Results not found'}), 404
+        
+        # read the tab-separated file correctly
+        # df = pd.read_csv(results_file, sep='\t', comment='#', na_values='.')
 
-        df = pd.read_csv(annotated_file)
+        df = pd.read_csv(
+            results_file,
+            sep='\t',              #using tab as delimiter
+            comment=None,          #don't treat # as comment!
+            quoting=3,            # QUOTE_NONE - Don't use quotes
+            dtype=str             #reading all columns as strings initially to preserve values
+        )
         
-        #error handling: to handle NaN values before JSON serialization
-        df = df.replace({np.nan: None})  #replacing NaN with None (will become null in JSON)
+        # Clean up column names by removing '#' if present
+        # df.columns = [col.replace('#', '') for col in df.columns]
         
-        #converting boolean values to strings if present
+        # Handle data types for JSON serialization
+        df = df.replace({np.nan: None})
+        
+        # Convert boolean values to strings
         for col in df.select_dtypes(include=['bool']).columns:
             df[col] = df[col].map({True: 'Yes', False: 'No'})
+        
+        # Round floating point numbers
+        for col in df.select_dtypes(include=['float64']).columns:
+            df[col] = df[col].round(4)
+
+# TO RE-FORMAT OG ANNOTATED FILE (to properly separate fields in different columns IN THE OG FILE ITSELF)
+        #read original messed-up annotated_variants file
+        with open(results_file, 'r', encoding='utf-8') as infile:
+            lines = infile.readlines()
+        
+        #replace "tabs" with "commas" ---
+        converted_lines = [line.replace('\t', ',') for line in lines]
+
+        #saving the csv file
+        with open(results_file, 'w', encoding='utf-8') as outfile:
+            outfile.writelines(converted_lines)
         
         return jsonify({
             'success': True,
             'data': df.to_dict('records'),
             'columns': df.columns.tolist()
         })
-
+        
     except Exception as e:
+        app.logger.error(f"Error retrieving results: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/download_results/<timestamp>')
+def download_results(timestamp):
+    try:
+        annotation_type = request.args.get('type', 'dbnsfp')
+        results_file = os.path.join(
+            Config.PROCESSED_FOLDER,
+            timestamp,
+            f'{annotation_type}_annotated_variants.csv'
+        )
+        
+        if not os.path.exists(results_file):
+            return jsonify({'error': 'Results file not found'}), 404
+        
+        # #read original messed-up annotated_variants file ---
+        # with open(results_file, 'r', encoding='utf-8') as infile:
+        #     lines = infile.readlines()
+        
+        # #replace "tabs" with "commas" ---
+        # converted_lines = [line.replace('\t', ',') for line in lines]
+        
+        # temp_file = os.path.join(
+        #     Config.PROCESSED_FOLDER,
+        #     timestamp,
+        #     f'temp_{annotation_type}_annotated_variants.csv'
+        # )
+        
+        # #saving the csv file
+        # with open(temp_file, 'w', encoding='utf-8') as outfile:
+        #     outfile.writelines(converted_lines)
+        
+        return send_file(
+            results_file,
+            as_attachment=True,
+            download_name=f'{annotation_type}_annotated_variants_{timestamp}.csv',
+            mimetype='text/csv'
+        )
+        
+    except Exception as e:
+        app.logger.error(f"Error downloading results: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/status/<timestamp>')
+def get_status(timestamp):
+    # Check processing status
+    try:
+        folder_path = os.path.join(Config.PROCESSED_FOLDER, timestamp)
+        
+        if not os.path.exists(folder_path):
+            return jsonify({
+                'status': 'not_found',
+                'message': 'Process not found'
+            }), 404
+        
+        # Check annotation completion
+        annotation_types = ['dbnsfp', 'vep']
+        completed_files = []
+        
+        for ann_type in annotation_types:
+            result_file = os.path.join(folder_path, f'{ann_type}_annotated_variants.csv')
+            if os.path.exists(result_file):
+                completed_files.append(ann_type)
+        
+        if not completed_files:
+            return jsonify({
+                'status': 'processing',
+                'message': 'Annotation in progress'
+            })
+        
+        return jsonify({
+            'status': 'completed',
+            'completed_annotations': completed_files,
+            'message': 'Annotation completed'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error checking status: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    app.logger.error(f"Page not found: {request.url}")
+    return jsonify({'error': 'Resource not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    app.logger.error(f"Server Error: {error}")
+    return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

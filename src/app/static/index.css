@@ -5,6 +5,17 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #3498db;
+    --accent-color: #e74c3c;
+    --background-color: #f5f6fa;
+    --card-background: #ffffff;
+    --text-color: #2c3e50;
+    --border-radius: 8px;
+    --shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
 body {
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     min-height: 100vh;
@@ -22,6 +33,29 @@ body {
     width: 100%;
     max-width: 1200px;
     margin: 0 auto;
+}
+
+.app-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.app-header h1 {
+    color: var(--primary-color);
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.header-icon {
+    margin-right: 1rem;
+    color: var(--secondary-color);
+}
+
+.subtitle {
+    color: #666;
+    font-size: 1.2rem;
+    font-style: italic;
+    margin: 0;
 }
 
 h1 {
@@ -81,6 +115,16 @@ label {
     font-size: 1.1rem;
 }
 
+.file-upload-section {
+    margin-bottom: 2rem;
+}
+
+.file-upload-section h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
 .custom-file-upload {
     display: inline-block;
     padding: 12px 24px;
@@ -94,6 +138,10 @@ label {
 .custom-file-upload:hover {
     background: #3182ce;
     transform: translateY(-2px);
+}
+
+.custom-file-upload i {
+    margin-right: 0.5rem;
 }
 
 #file-name {
@@ -117,13 +165,92 @@ button {
 }
 
 #process-btn {
+    /* display: inline-flex; */
+    align-items: center;
+    padding: 1rem 2rem;
     background: #48bb78;
     color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
 #process-btn:hover {
     background: #38a169;
     transform: translateY(-2px);
+}
+
+#process-btn i {
+    margin-right: 0.5rem;
+}
+
+.annotation-selection {
+    margin-bottom: 2rem;
+}
+
+.annotation-selection h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.annotation-options {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-top: 1rem;
+}
+
+.annotation-option {
+    position: relative;
+    width: 200px;
+}
+
+.annotation-option input[type="radio"] {
+    display: none;
+}
+
+.annotation-option label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.annotation-option label:hover {
+    border-color: #4299e1;
+    transform: translateY(-2px);
+}
+
+.annotation-option input[type="radio"]:checked + label {
+    border-color: #4299e1;
+    background: #ebf8ff;
+    box-shadow: 0 4px 12px rgba(66, 153, 225, 0.2);
+}
+
+.annotation-option i {
+    font-size: 2rem;
+    color: #4299e1;
+    margin-bottom: 0.5rem;
+}
+
+.annotation-option span {
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 0.25rem;
+}
+
+.annotation-option small {
+    font-size: 0.8rem;
+    color: #718096;
+    text-align: center;
 }
 
 /* Loading Spinner */
@@ -136,8 +263,8 @@ button {
     border: 4px solid #f3f3f3;
     border-top: 4px solid #3498db;
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
+    width: 50px;
+    height: 50px;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
 }
@@ -185,6 +312,7 @@ button {
 }
 
 #results-table td.expanded {
+    max-width: none;
     white-space: normal;
     word-break: break-word;
 }
@@ -198,7 +326,6 @@ button {
 }
 
 .table-search {
-    width: 100%;
     padding: 8px 12px;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
@@ -234,6 +361,105 @@ button {
     border-bottom: 2px solid #e2e8f0;
 }
 
+.results-header h2 {
+    margin: 0;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+}
+
+.results-header h2 i {
+    margin-right: 0.5rem;
+    color: var(--secondary-color);
+}
+
+.database-config-section {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.database-config-section h2 {
+    color: var(--primary-color);
+    margin-bottom: 1.2rem;
+    gap: 0.5rem;
+}
+
+.path-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.path-input-wrapper label {
+    font-weight: 500;
+    color: #4a5568;
+}
+
+.path-input-container {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.path-input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: border-color 0.2s;
+}
+
+.path-input:focus {
+    border-color: #4299e1;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
+.reset-btn {
+    padding: 0.75rem;
+    background: #edf2f7;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.reset-btn:hover {
+    background: #e2e8f0;
+}
+
+.path-hint {
+    color: #718096;
+    font-size: 0.85rem;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #4299e1;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.action-btn:hover {
+    background: #3182ce;
+}
+
+.header-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
 .close-btn {
     background: none;
     padding: 8px;
@@ -262,4 +488,16 @@ button {
     button {
         width: 100%;
     }
+    
+    .annotation-options {
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .annotation-option {
+        width: 100%;
+        max-width: 300px;
+    }
+
 }
