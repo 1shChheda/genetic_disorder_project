@@ -29,6 +29,12 @@ genetic_disorder_detection_project/
 │   │   ├── vep_annotator.py        # VEP API implementation
 │   │   ├── dbnsfp_annotator.py     # dbNSFP implementation
 │   │   └── annotation_service.py   # Workflow orchestration
+│   ├── process/                    # Process management
+│   │   ├── __init__.py
+│   │   └── process_manager.py      # Manages annotation processes
+│   ├── session/                    # Session management
+│   │   ├── __init__.py
+│   │   └── session_manager.py      # Handles user sessions
 │   └── app/                        # Web application
 │       ├── templates/              # HTML templates
 │       ├── static/                 # Static assets
@@ -114,12 +120,19 @@ By default, the application expects the dbNSFP database files to be located in t
         - *VEP*: Uses Ensembl's Variant Effect Predictor.
         - *dbNSFP*: Uses the dbNSFP database.
     3. Submit for processing.
+    4. You can cancel the process at any time by clicking the **Cancel Process** button.
 
 5. **View and Download Results**:
     - Once processing is complete, results will be displayed in the web interface.
     - You can download the annotated results directly through the web interface by clicking the **Download Results** button.
     - The downloaded file will be named in the format `<annotation_type>_annotated_variants_<timestamp>.csv`.
 
+## Multi-tab Support
+The application now supports working with multiple browser tabs simultaneously:
+- Each browser tab gets a unique session
+- Process management is isolated between tabs
+- Resources are automatically cleaned up
+- Session data expires after 24 hours of inactivity
 
 ## Project Status
 This project is in the initial stages of development. It currently supports:
@@ -127,6 +140,9 @@ This project is in the initial stages of development. It currently supports:
 - Dual annotation pathways (VEP and dbNSFP)
 - Configurable dbNSFP database path
 - Web interface for file processing
+- Process management with cancellation support
+- Multi-tab session handling
+- Automatic resource cleanup
 - Results visualization and download via a dedicated **Download Results** button
 
 Future developments will include:

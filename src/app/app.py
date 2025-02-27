@@ -162,6 +162,11 @@ def upload_file():
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+        # Save uploaded file
+        input_filename = f"{timestamp}_{file.filename}"
+        input_path = os.path.join(Config.UPLOAD_FOLDER, input_filename)
+        file.save(input_path)
+
         # Create unique process identifier
         process_key = process_manager.start_process(
             session['session_id'],
@@ -173,11 +178,6 @@ def upload_file():
 
         # Associate process with session (IMPORTANT to understand)
         session_manager.add_process_to_session(session['session_id'], process_key)
-
-        # Save uploaded file
-        input_filename = f"{timestamp}_{file.filename}"
-        input_path = os.path.join(Config.UPLOAD_FOLDER, input_filename)
-        file.save(input_path)
         
         # Prepare workflow configuration
         workflow_config = {
@@ -220,11 +220,11 @@ def upload_file():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/cancel_process/<process_key>', methods=['POST'])
-def cancel_process():
+def cancel_process(process_key):
 
     # Cancel a running process
 
-    process_key = request.view_args['process_key']
+    # process_key = request.view_args['process_key']
     
     if process_manager.cancel_process(process_key):
         session_manager.remove_process_from_session(session['session_id'], process_key)
@@ -233,11 +233,11 @@ def cancel_process():
         return jsonify({'error': 'Failed to cancel process'}), 400
 
 @app.route('/process_status/<process_key>')
-def get_process_status():
+def get_process_status(process_key):
 
     # Get current status of a process
 
-    process_key = request.view_args['process_key']
+    # process_key = request.view_args['process_key']
     status = process_manager.get_process_status(process_key)
     
     if status:
