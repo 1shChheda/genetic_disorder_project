@@ -2,6 +2,8 @@ import os
 from datetime import datetime, timedelta
 import time
 import threading
+import multiprocessing
+from functools import partial
 from flask import Flask, request, render_template, jsonify, send_file, session
 import pandas as pd
 import numpy as np
@@ -122,6 +124,45 @@ def before_request():
         session['session_id'] = session_manager.create_session()
     session_manager.update_session_activity(session['session_id'])
 
+# Start processing in a separate process
+def run_workflow(workflow_config, input_path, output_folder, process_key):
+    try:
+        # Register this process with the process manager
+        child_pid = os.getpid()
+        app.logger.info(f"Starting annotation process with PID {child_pid} for key {process_key}")
+        
+        # Update the process manager with child PID
+        from flask import current_app
+        with app.app_context():
+            process_manager.register_child_process(process_key, child_pid)
+        
+        # Initialize workflow
+        workflow = AnnotationWorkflow(**workflow_config)
+        
+        # Run the workflow
+        result = workflow.process(input_path, output_folder)
+        
+        # Create a status file to signal completion to the main process
+        status_file = os.path.join(output_folder, "status.json")
+        import json
+        with open(status_file, 'w') as f:
+            json.dump(result, f)
+        
+        app.logger.info(f"Process {process_key} completed successfully with status: {result.get('status', 'unknown')}")
+        return result
+        
+    except Exception as e:
+        app.logger.error(f"Error in workflow process: {str(e)}")
+        # Write error status to a file that parent process can check
+        try:
+            status_file = os.path.join(output_folder, "status.json")
+            import json
+            with open(status_file, 'w') as f:
+                json.dump({"status": "error", "error": str(e)}, f)
+        except Exception as write_err:
+            app.logger.error(f"Failed to write status file: {str(write_err)}")
+        return None
+
 @app.route('/')
 def home():
     # Render home page with configuration options
@@ -166,6 +207,10 @@ def upload_file():
         input_filename = f"{timestamp}_{file.filename}"
         input_path = os.path.join(Config.UPLOAD_FOLDER, input_filename)
         file.save(input_path)
+        
+        # Create output directory
+        output_folder = os.path.join(Config.PROCESSED_FOLDER, timestamp)
+        os.makedirs(output_folder, exist_ok=True)
 
         # Create unique process identifier
         process_key = process_manager.start_process(
@@ -173,7 +218,7 @@ def upload_file():
             timestamp,
             annotation_type,
             input_path,
-            os.path.join(Config.PROCESSED_FOLDER, timestamp)
+            output_folder
         )
 
         # Associate process with session (IMPORTANT to understand)
@@ -193,23 +238,28 @@ def upload_file():
                 'memory': request.form.get('memory', Config.DEFAULT_JAVA_MEMORY)
             })
         
-        # Initialize and run workflow
-        workflow = AnnotationWorkflow(**workflow_config)
-        result = workflow.process(input_path, Config.PROCESSED_FOLDER)
+        # Start the process
+        process = multiprocessing.Process(
+            target=run_workflow,
+            args=(workflow_config, input_path, output_folder, process_key)
+        )
+        process.daemon = True  # Ensure process terminates when parent does
+        process.start()
         
-        app.logger.info(f"File processed successfully: {input_filename}")
-
-        process_manager.update_process_status(process_key, 'completed')
+        # Log the process ID
+        app.logger.info(f"Started annotation process with PID {process.pid} for key {process_key}")
+        
+        # Register the child process with our process manager
+        process_manager.register_child_process(process_key, process.pid)
         
         return jsonify({
             'success': True,
             'process_key': process_key,
-            'message': 'File processed successfully',
-            'timestamp': result['timestamp'],
+            'message': 'File processing started',
+            'timestamp': timestamp,
             'annotation_type': annotation_type,
-            'output_folder': result['output_folder'],
-            'parsed_file': result['parsed_file'],
-            'annotated_file': result['annotated_file'],
+            'output_folder': output_folder,
+            'pid': process.pid,  # Include PID in response for debugging
             'dbnsfp_dir': dbnsfp_dir
         })
         
@@ -217,6 +267,47 @@ def upload_file():
         if 'process_key' in locals():
             process_manager.update_process_status(process_key, 'error')
         app.logger.error(f"Error processing upload: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/check_process/<process_key>')
+def check_process(process_key):
+
+    # to check if a process has completed by checking for a status file
+
+    try:
+        # Get process info
+        status = process_manager.get_process_status(process_key)
+        
+        if status != 'running':
+            # Already marked as completed or error
+            return jsonify({'status': status})
+        
+        # If it's marked as running, check if a status file exists
+        process_info = process_manager.get_process_info(process_key)
+        if not process_info:
+            return jsonify({'error': 'Process not found'}), 404
+            
+        status_file = os.path.join(process_info.output_folder, "status.json")
+        
+        if os.path.exists(status_file):
+            # Read status from file
+            import json
+            with open(status_file, 'r') as f:
+                result = json.load(f)
+                
+            # Update the process status
+            process_manager.update_process_status(process_key, result.get('status', 'completed'))
+            
+            return jsonify({
+                'status': result.get('status', 'completed'),
+                'details': result
+            })
+        
+        # Process is still running
+        return jsonify({'status': 'running'})
+        
+    except Exception as e:
+        app.logger.error(f"Error checking process: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/cancel_process/<process_key>', methods=['POST'])
@@ -234,11 +325,25 @@ def cancel_process(process_key):
 
 @app.route('/process_status/<process_key>')
 def get_process_status(process_key):
-
     # Get current status of a process
-
-    # process_key = request.view_args['process_key']
     status = process_manager.get_process_status(process_key)
+    
+    if status == 'running':
+        # Check if a status file exists
+        process_info = process_manager.get_process_info(process_key)
+        if process_info:
+            status_file = os.path.join(process_info.output_folder, "status.json")
+            
+            if os.path.exists(status_file):
+                # Read status from file
+                import json
+                with open(status_file, 'r') as f:
+                    result = json.load(f)
+                    
+                # Update the process status
+                new_status = result.get('status', 'completed')
+                process_manager.update_process_status(process_key, new_status)
+                status = new_status
     
     if status:
         return jsonify({'status': status})

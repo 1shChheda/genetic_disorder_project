@@ -274,6 +274,94 @@ button {
     100% { transform: rotate(360deg); }
 }
 
+.status-container {
+    margin-top: 15px;
+    border-radius: 5px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.status-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    padding: 10px 15px;
+    border-radius: 5px;
+    display: none;
+    color: white;
+    font-weight: bold;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    max-width: 300px;
+    text-align: center;
+}
+
+.status-indicator.info {
+    background-color: #17a2b8;
+}
+
+.status-indicator.success {
+    background-color: #28a745;
+}
+
+.status-indicator.warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.status-indicator.error {
+    background-color: #dc3545;
+}
+
+.status-label {
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+#status-text {
+    padding: 3px 8px;
+    border-radius: 15px;
+    background-color: #17a2b8;
+    color: white;
+    font-size: 0.9em;
+}
+
+#status-text.running {
+    background-color: #17a2b8;
+}
+
+#status-text.completed {
+    background-color: #28a745;
+}
+
+#status-text.error {
+    background-color: #dc3545;
+}
+
+#status-text.cancelled {
+    background-color: #6c757d;
+}
+
+.cancel-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.3s;
+}
+
+.cancel-btn:hover {
+    background-color: #c82333;
+}
+
 /* Results Table Styling */
 .table-wrapper {
     overflow-x: auto;
