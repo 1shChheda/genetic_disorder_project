@@ -95,10 +95,13 @@ class DbNSFPAnnotator(BaseAnnotator):
             
             self.logger.info("Annotation completed successfully")
             
+            # Return the output file path explicitly
+            return True  
+
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Annotation failed: {e.stderr}")
             raise RuntimeError(f"DbNSFP annotation failed: {e.stderr}")
-            
+
         finally:
             os.chdir(original_dir)
             

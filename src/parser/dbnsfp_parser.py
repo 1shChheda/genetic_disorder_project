@@ -23,8 +23,9 @@ class DbNSFPParser(BaseParser):
         # output:
             #     dict: Contains paths to output files and processing info
         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_folder = os.path.join(output_dir, timestamp)
+        # Extract timestamp from the output_dir instead of creating a new one
+        timestamp = os.path.basename(output_dir)
+        output_folder = output_dir  # Use the directory passed in, don't create a new one
         os.makedirs(output_folder, exist_ok=True)
         
         # Copy input VCF to output folder

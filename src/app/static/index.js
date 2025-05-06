@@ -12,6 +12,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetPathBtn = document.getElementById('reset-path');
     const downloadBtn = document.getElementById('download-results');
 
+    // Create a status indicator element
+    const statusIndicator = document.createElement('div');
+    statusIndicator.id = 'status-indicator';
+    statusIndicator.className = 'status-indicator';
+    statusIndicator.style.display = 'none';
+    document.querySelector('.container').appendChild(statusIndicator);
+
+    let statusPollingInterval = null;
 
     //to keep track of current result timestamp
     let currentResultTimestamp = null;
@@ -26,6 +34,58 @@ document.addEventListener('DOMContentLoaded', function() {
     //file input change handler
     fileInput.addEventListener('change', function(e) {
         fileName.textContent = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
+    });
+
+// CANCEL PROCESS stuff 
+    let currentProcessKey = null;
+
+    // adding cancel button to loading spinner
+    const cancelButton = document.createElement('button');
+    cancelButton.id = 'cancel-process';
+    cancelButton.className = 'cancel-btn';
+    cancelButton.innerHTML = '<i class="fas fa-times"></i> Cancel Process';
+    loadingSpinner.appendChild(cancelButton);
+
+    //handle process cancellation
+    cancelButton.addEventListener('click', async function() {
+        if (!currentProcessKey) {
+            showMessage('No active process to cancel');
+            showStatus('No active process to cancel', 'error', 3000);
+            return;
+        }
+
+        try {
+
+            // Display cancellation request status
+            showStatus('Cancelling process...', 'warning');
+
+            const response = await fetch(`/cancel_process/${currentProcessKey}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to cancel process');
+            }
+            
+            // Reset UI
+            clearStatusPolling();
+            loadingSpinner.style.display = 'none';
+            errorMessage.style.display = 'none';
+            showMessage('Process cancelled successfully');
+            showStatus('Process cancelled', 'success', 3000);
+
+            // Reset current process tracking
+            currentProcessKey = null;
+            
+        } catch (error) {
+            showError(`Cancellation error: ${error.message}`);
+            showStatus('Cancellation failed', 'error', 3000);
+        }
     });
 
     //form submission handler
@@ -48,6 +108,8 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingSpinner.style.display = 'block';
         errorMessage.style.display = 'none';
         resultsContainer.style.display = 'none';
+
+        showStatus('Starting process...', 'info');
 
         const formData = new FormData(uploadForm);
         formData.append('vcf_file', fileInput.files[0]);
@@ -74,39 +136,99 @@ document.addEventListener('DOMContentLoaded', function() {
             //store the timestamp for download
             currentResultTimestamp = result.timestamp;
 
-            //start polling for status
-            await pollStatus(result.timestamp, result.annotation_type);
+            currentProcessKey = result.process_key;
 
+            // Display process information for debugging (can be removed in production)
+            showStatus(`Process started: ${currentProcessKey} (PID: ${result.pid})`, 'info');
+            console.log('Process details:', result);
+
+            // Start polling for status
+            startStatusPolling(currentProcessKey, result.timestamp, result.annotation_type);
+            
         } catch (error) {
             showError(error.message);
+            showStatus('Process failed to start', 'error', 3000);        
         } finally {
             loadingSpinner.style.display = 'none';
         }
     });
 
-    //poll for processing status
-    async function pollStatus(timestamp, annotationType) {
-        try {
-            const response = await fetch(`/status/${timestamp}`);
-            const result = await response.json();
-
-            if (result.status === 'completed') {
-                //to fetch results when processing is complete
-                await fetchResults(timestamp, annotationType);
-            } else if (result.status === 'processing') {
-                // NOTE: polling every 2 seconds
-                setTimeout(() => pollStatus(timestamp, annotationType), 2000);
-            } else if (result.status === 'error') {
-                throw new Error(result.message || 'Processing failed');
+    // Start polling for process status
+    function startStatusPolling(processKey, timestamp, annotationType) {
+        // Clear any existing polling
+        clearStatusPolling();
+        
+        // Start new polling
+        statusPollingInterval = setInterval(async () => {
+            try {
+                await pollStatus(processKey, timestamp, annotationType);
+            } catch (error) {
+                console.error('Error polling status:', error);
+                showStatus('Error checking status', 'error');
             }
+        }, 2000);
+    }
+
+    // Clear status polling
+    function clearStatusPolling() {
+        if (statusPollingInterval) {
+            clearInterval(statusPollingInterval);
+            statusPollingInterval = null;
+        }
+    }
+
+    //poll for processing status
+    async function pollStatus(processKey, timestamp, annotationType) {
+        try {
+            const response = await fetch(`/process_status/${processKey}`);
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to check status');
+            }
+            
+            console.log(`Process status: ${result.status}`); //added browsor console logging for debugging
+            
+            switch (result.status) {
+                case 'running':
+                    showStatus('Processing in progress...', 'info');
+                    break;
+                case 'completed':
+                    clearStatusPolling();
+                    showStatus('Processing completed!', 'success');
+                    await fetchResults(timestamp, annotationType);
+                    loadingSpinner.style.display = 'none';
+                    break;
+                case 'cancelled':
+                    clearStatusPolling();
+                    loadingSpinner.style.display = 'none';
+                    showStatus('Process was cancelled', 'warning', 3000);
+                    showMessage('Process was cancelled');
+                    break;
+                case 'error':
+                    clearStatusPolling();
+                    loadingSpinner.style.display = 'none';
+                    showStatus('Processing failed', 'error', 3000);
+                    throw new Error('Processing failed');
+                default:
+                    showStatus(`Unknown status: ${result.status}`, 'warning');
+            }
+            
         } catch (error) {
-            showError(error.message);
+            console.error('Status polling error:', error);
+            clearStatusPolling();
+            showError(`Status check failed: ${error.message}`);
+            showStatus('Error occurred', 'error', 3000);
+            loadingSpinner.style.display = 'none';
         }
     }
 
     //fetch and display results
     async function fetchResults(timestamp, annotationType) {
         try {
+
+            showStatus('Fetching results...', 'info');
+
             const response = await fetch(`/get_results/${timestamp}?type=${annotationType}`);
             const result = await response.json();
 
@@ -115,8 +237,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             displayResults(result.data, result.columns);
+            showStatus('Results loaded successfully', 'success', 3000);
+
         } catch (error) {
             showError(error.message);
+            showStatus('Failed to fetch results', 'error', 3000);        
         }
     }
 
@@ -172,6 +297,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
+
+            showStatus('Preparing download...', 'info');
+
             const annotationType = document.querySelector('input[name="annotation_type"]:checked').value;
             const response = await fetch(`/download_results/${currentResultTimestamp}?type=${annotationType}`);
             
@@ -188,11 +316,45 @@ document.addEventListener('DOMContentLoaded', function() {
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+
+            showStatus('Download complete', 'success', 3000);
             
         } catch (error) {
-            alert('Error downloading results: ' + error.message);
+            showStatus('Download failed', 'error', 3000);
+            alert('Error downloading results: ' + error.message);        
         }
     });
+
+    //adding a beforeunload handler for tab close
+    window.addEventListener('beforeunload', function(e) {
+        if (currentProcessKey) {
+            //creating a synchronous request for tab close
+            navigator.sendBeacon(`/cancel_process/${currentProcessKey}`);
+            console.log('Sent cancellation request via beacon');
+        }
+    });
+
+    //show status indicator
+    function showStatus(message, type = 'info', duration = 0) {
+        statusIndicator.textContent = message;
+        statusIndicator.className = `status-indicator ${type}`;
+        statusIndicator.style.display = 'block';
+        
+        if (duration > 0) {
+            setTimeout(() => {
+                statusIndicator.style.display = 'none';
+            }, duration);
+        }
+    }
+
+    //message display function
+    function showMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message';
+        messageDiv.textContent = message;
+        document.querySelector('.container').appendChild(messageDiv);
+        setTimeout(() => messageDiv.remove(), 5000);
+    }
 
     //show error message
     function showError(message) {

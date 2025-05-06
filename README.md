@@ -15,7 +15,8 @@ genetic_disorder_detection_project/
 │   └── processed/                  # Processed output files
 │       └── <timestamped-folder>/   # Unique folder for each run
 │           ├── parsed_variants.csv
-│           ├── annotated_variants.csv
+│           ├── <type>_annotated_variants.csv
+│           ├── status.json         # Status tracking file for process communication
 │           └── metadata.txt
 ├── src/                            # Source code
 │   ├── parser/                     # VCF parsing modules
@@ -29,6 +30,12 @@ genetic_disorder_detection_project/
 │   │   ├── vep_annotator.py        # VEP API implementation
 │   │   ├── dbnsfp_annotator.py     # dbNSFP implementation
 │   │   └── annotation_service.py   # Workflow orchestration
+│   ├── process/                    # Process management
+│   │   ├── __init__.py
+│   │   └── process_manager.py      # Manages annotation processes
+│   ├── session/                    # Session management
+│   │   ├── __init__.py
+│   │   └── session_manager.py      # Handles user sessions
 │   └── app/                        # Web application
 │       ├── templates/              # HTML templates
 │       ├── static/                 # Static assets
@@ -114,24 +121,77 @@ By default, the application expects the dbNSFP database files to be located in t
         - *VEP*: Uses Ensembl's Variant Effect Predictor.
         - *dbNSFP*: Uses the dbNSFP database.
     3. Submit for processing.
+    4. You can cancel the process at any time by clicking the **Cancel Process** button.
 
 5. **View and Download Results**:
     - Once processing is complete, results will be displayed in the web interface.
     - You can download the annotated results directly through the web interface by clicking the **Download Results** button.
     - The downloaded file will be named in the format `<annotation_type>_annotated_variants_<timestamp>.csv`.
 
+## Multi-tab Support
+The application now supports working with multiple browser tabs simultaneously:
+- Each browser tab gets a unique session
+- Process management is isolated between tabs
+- Resources are automatically cleaned up
+- Session data expires after 24 hours of inactivity
+
+## Process Status Management
+The application uses a robust status management system to handle multiprocessing communications:
+
+- **Status file-based communication**: Each process writes its status to a JSON file to ensure reliable status updates between parent and child processes
+- **Automatic status checking**: The web interface periodically checks process status
+- **Workflow state tracking**: Status includes details about each completed or running step
+
+### For Developers (Important Notes)
+When adding new processing steps (like ML features, prediction models):
+
+1. **Status File Structure**: 
+   - Always update the status.json file at the end of your processing step:
+   ```python
+   # Example of updating status.json at the end of your step
+   status_file = os.path.join(output_folder, "status.json")
+   with open(status_file, 'w') as f:
+       json.dump({
+           "status": "completed",  # or "running", "error"
+           "step": "your_step_name",
+           "details": {...}  # Additional information
+       }, f)
+   ```
+
+2. **Process Status Checking**:
+   - The application checks for status.json files to determine process completion
+   - Never rely solely on in-memory status updates for multiprocessing communication
+   - When adding new steps, ensure they check for cancellation files and update status.json
+
+3. **Workflow Integration**:
+   - Extend the AnnotationWorkflow class or create new workflow classes that follow the same pattern
+   - Ensure each step reports its status via the status.json file
+   - For long-running ML processes, consider adding progress updates to the status file
+
+4. **Frontend Integration**:
+   - Update the frontend JavaScript to handle your specific step's status
+   - Add appropriate UI elements to display results from your step
 
 ## Project Status
-This project is in the initial stages of development. It currently supports:
+This project is in active development. It currently supports:
 - VCF file parsing
 - Dual annotation pathways (VEP and dbNSFP)
 - Configurable dbNSFP database path
 - Web interface for file processing
+- Robust process management with cancellation support
+- Reliable status tracking for multiprocessing workflows
+- Multi-tab session handling
+- Automatic resource cleanup
 - Results visualization and download via a dedicated **Download Results** button
 
-Future developments will include:
+## Future Development Roadmap
+The project will be extended with:
+- Feature engineering and selection:
+  - Recursive Feature Elimination (RFE)
+  - Random Forest Feature Selection
+- Pathogenicity prediction:
+  - Deep Learning Model (Neural Network)
+  - Variant classification (Benign/Pathogenic)
 - Advanced filtering options
 - Batch processing
-- Additional annotation sources
-- Enhanced visualization
-- Machine learning integration
+- Enhanced visualization dashboards

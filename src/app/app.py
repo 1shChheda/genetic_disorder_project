@@ -1,9 +1,15 @@
 import os
-from datetime import datetime
-from flask import Flask, request, render_template, jsonify, send_file
+from datetime import datetime, timedelta
+import time
+import threading
+import multiprocessing
+from functools import partial
+from flask import Flask, request, render_template, jsonify, send_file, session
 import pandas as pd
 import numpy as np
 from src.annotator.annotation_service import AnnotationWorkflow
+from src.process.process_manager import process_manager
+from src.session.session_manager import session_manager
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -90,6 +96,18 @@ def setup_logging(app):
 
 app = Flask(__name__)
 
+#adding a secret key for session management
+# In a production env, this should be a secure random key stored in environment variables
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev_key_h7j3k2h5j2k5h7j2k5h72jk5')
+
+# security settings (optional, but i recommend)
+app.config.update(
+    SESSION_COOKIE_SECURE=True,      # only send cookies over HTTPS
+    SESSION_COOKIE_HTTPONLY=True,    # prevent javaScript access to session cookie
+    SESSION_COOKIE_SAMESITE='Lax',   # Protect against CSRF (imp)
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24)  # session expiry time
+)
+
 # Initialize configuration and logging
 try:
     Config.validate_paths()
@@ -98,6 +116,52 @@ try:
 except Exception as e:
     print(f"Initialization error: {e}")
     raise
+
+@app.before_request
+def before_request():
+    # THis will ensure session exists and is valid
+    if 'session_id' not in session:
+        session['session_id'] = session_manager.create_session()
+    session_manager.update_session_activity(session['session_id'])
+
+# Start processing in a separate process
+def run_workflow(workflow_config, input_path, output_folder, process_key):
+    try:
+        # Register this process with the process manager
+        child_pid = os.getpid()
+        app.logger.info(f"Starting annotation process with PID {child_pid} for key {process_key}")
+        
+        # Update the process manager with child PID
+        from flask import current_app
+        with app.app_context():
+            process_manager.register_child_process(process_key, child_pid)
+        
+        # Initialize workflow
+        workflow = AnnotationWorkflow(**workflow_config)
+        
+        # Run the workflow
+        result = workflow.process(input_path, output_folder)
+        
+        # Create a status file to signal completion to the main process
+        status_file = os.path.join(output_folder, "status.json")
+        import json
+        with open(status_file, 'w') as f:
+            json.dump(result, f)
+        
+        app.logger.info(f"Process {process_key} completed successfully with status: {result.get('status', 'unknown')}")
+        return result
+        
+    except Exception as e:
+        app.logger.error(f"Error in workflow process: {str(e)}")
+        # Write error status to a file that parent process can check
+        try:
+            status_file = os.path.join(output_folder, "status.json")
+            import json
+            with open(status_file, 'w') as f:
+                json.dump({"status": "error", "error": str(e)}, f)
+        except Exception as write_err:
+            app.logger.error(f"Failed to write status file: {str(write_err)}")
+        return None
 
 @app.route('/')
 def home():
@@ -137,11 +201,28 @@ def upload_file():
         if not annotation_type or annotation_type not in ['dbnsfp', 'vep']:
             return jsonify({'error': 'Invalid or missing annotation type'}), 400
         
-        # Save uploaded file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Save uploaded file
         input_filename = f"{timestamp}_{file.filename}"
         input_path = os.path.join(Config.UPLOAD_FOLDER, input_filename)
         file.save(input_path)
+        
+        # Create output directory
+        output_folder = os.path.join(Config.PROCESSED_FOLDER, timestamp)
+        os.makedirs(output_folder, exist_ok=True)
+
+        # Create unique process identifier
+        process_key = process_manager.start_process(
+            session['session_id'],
+            timestamp,
+            annotation_type,
+            input_path,
+            output_folder
+        )
+
+        # Associate process with session (IMPORTANT to understand)
+        session_manager.add_process_to_session(session['session_id'], process_key)
         
         # Prepare workflow configuration
         workflow_config = {
@@ -157,26 +238,129 @@ def upload_file():
                 'memory': request.form.get('memory', Config.DEFAULT_JAVA_MEMORY)
             })
         
-        # Initialize and run workflow
-        workflow = AnnotationWorkflow(**workflow_config)
-        result = workflow.process(input_path, Config.PROCESSED_FOLDER)
+        # Start the process
+        process = multiprocessing.Process(
+            target=run_workflow,
+            args=(workflow_config, input_path, output_folder, process_key)
+        )
+        process.daemon = True  # Ensure process terminates when parent does
+        process.start()
         
-        app.logger.info(f"File processed successfully: {input_filename}")
+        # Log the process ID
+        app.logger.info(f"Started annotation process with PID {process.pid} for key {process_key}")
+        
+        # Register the child process with our process manager
+        process_manager.register_child_process(process_key, process.pid)
         
         return jsonify({
             'success': True,
-            'message': 'File processed successfully',
-            'timestamp': result['timestamp'],
+            'process_key': process_key,
+            'message': 'File processing started',
+            'timestamp': timestamp,
             'annotation_type': annotation_type,
-            'output_folder': result['output_folder'],
-            'parsed_file': result['parsed_file'],
-            'annotated_file': result['annotated_file'],
+            'output_folder': output_folder,
+            'pid': process.pid,  # Include PID in response for debugging
             'dbnsfp_dir': dbnsfp_dir
         })
         
     except Exception as e:
+        if 'process_key' in locals():
+            process_manager.update_process_status(process_key, 'error')
         app.logger.error(f"Error processing upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/check_process/<process_key>')
+def check_process(process_key):
+
+    # to check if a process has completed by checking for a status file
+
+    try:
+        # Get process info
+        status = process_manager.get_process_status(process_key)
+        
+        if status != 'running':
+            # Already marked as completed or error
+            return jsonify({'status': status})
+        
+        # If it's marked as running, check if a status file exists
+        process_info = process_manager.get_process_info(process_key)
+        if not process_info:
+            return jsonify({'error': 'Process not found'}), 404
+            
+        status_file = os.path.join(process_info.output_folder, "status.json")
+        
+        if os.path.exists(status_file):
+            # Read status from file
+            import json
+            with open(status_file, 'r') as f:
+                result = json.load(f)
+                
+            # Update the process status
+            process_manager.update_process_status(process_key, result.get('status', 'completed'))
+            
+            return jsonify({
+                'status': result.get('status', 'completed'),
+                'details': result
+            })
+        
+        # Process is still running
+        return jsonify({'status': 'running'})
+        
+    except Exception as e:
+        app.logger.error(f"Error checking process: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/cancel_process/<process_key>', methods=['POST'])
+def cancel_process(process_key):
+
+    # Cancel a running process
+
+    # process_key = request.view_args['process_key']
+    
+    if process_manager.cancel_process(process_key):
+        session_manager.remove_process_from_session(session['session_id'], process_key)
+        return jsonify({'success': True, 'message': 'Process cancelled successfully'})
+    else:
+        return jsonify({'error': 'Failed to cancel process'}), 400
+
+@app.route('/process_status/<process_key>')
+def get_process_status(process_key):
+    # Get current status of a process
+    status = process_manager.get_process_status(process_key)
+    
+    if status == 'running':
+        # Check if a status file exists
+        process_info = process_manager.get_process_info(process_key)
+        if process_info:
+            status_file = os.path.join(process_info.output_folder, "status.json")
+            
+            if os.path.exists(status_file):
+                # Read status from file
+                import json
+                with open(status_file, 'r') as f:
+                    result = json.load(f)
+                    
+                # Update the process status
+                new_status = result.get('status', 'completed')
+                process_manager.update_process_status(process_key, new_status)
+                status = new_status
+    
+    if status:
+        return jsonify({'status': status})
+    else:
+        return jsonify({'error': 'Process not found'}), 404
+
+# adding cleanup task
+def cleanup_task():
+    # Periodic cleanup of old processes and sessions (NICEEEE idea)
+    while True:
+        process_manager.cleanup_old_processes()
+        session_manager.cleanup_inactive_sessions()
+        time.sleep(3600)  # this will run every hour
+
+# start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
+cleanup_thread.start()
 
 @app.route('/get_results/<timestamp>')
 def get_results(timestamp):
