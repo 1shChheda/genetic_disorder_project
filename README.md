@@ -16,7 +16,7 @@ genetic_disorder_detection_project/
 │       └── <timestamped-folder>/   # Unique folder for each run
 │           ├── parsed_variants.csv
 │           ├── <type>_annotated_variants.csv
-│           ├── status.json         # Status tracking file for process communication
+│           ├── status.json         # Process status tracking file
 │           └── metadata.txt
 ├── src/                            # Source code
 │   ├── parser/                     # VCF parsing modules
@@ -135,42 +135,201 @@ The application now supports working with multiple browser tabs simultaneously:
 - Resources are automatically cleaned up
 - Session data expires after 24 hours of inactivity
 
-## Process Status Management
-The application uses a robust status management system to handle multiprocessing communications:
+## Process Status Tracking System
+The application implements a robust process status tracking system to handle multiprocessing challenges:
 
-- **Status file-based communication**: Each process writes its status to a JSON file to ensure reliable status updates between parent and child processes
-- **Automatic status checking**: The web interface periodically checks process status
-- **Workflow state tracking**: Status includes details about each completed or running step
+### Status.json File Format
+Each process creates a `status.json` file in its output directory to track processing status:
 
-### For Developers (Important Notes)
-When adding new processing steps (like ML features, prediction models):
+```json
+{
+  "status": "running",
+  "steps": [
+    {"name": "annotation", "status": "completed", "timestamp": "2025-03-01T12:34:56"},
+    {"name": "feature_selection", "status": "running", "timestamp": "2025-03-01T12:35:01"},
+    {"name": "model_training", "status": "pending"}
+  ],
+  "current_step": "feature_selection",
+  "progress": 45
+}
+```
 
-1. **Status File Structure**: 
-   - Always update the status.json file at the end of your processing step:
-   ```python
-   # Example of updating status.json at the end of your step
-   status_file = os.path.join(output_folder, "status.json")
-   with open(status_file, 'w') as f:
-       json.dump({
-           "status": "completed",  # or "running", "error"
-           "step": "your_step_name",
-           "details": {...}  # Additional information
-       }, f)
-   ```
+### Key Components
+- `status`: Overall process status (running, completed, error, cancelled)
+- `steps`: Array of workflow steps with individual status tracking
+- `current_step`: The active processing step
+- `progress`: Optional percentage completion value
 
-2. **Process Status Checking**:
-   - The application checks for status.json files to determine process completion
-   - Never rely solely on in-memory status updates for multiprocessing communication
-   - When adding new steps, ensure they check for cancellation files and update status.json
+### Implementation Details
+- Status file is created by the worker process and read by the main Flask application
+- Ensures reliable status communication between separate processes
+- Provides granular tracking of each workflow step
 
-3. **Workflow Integration**:
-   - Extend the AnnotationWorkflow class or create new workflow classes that follow the same pattern
-   - Ensure each step reports its status via the status.json file
-   - For long-running ML processes, consider adding progress updates to the status file
+## For Developers (Adding New Workflow Steps)
 
-4. **Frontend Integration**:
-   - Update the frontend JavaScript to handle your specific step's status
-   - Add appropriate UI elements to display results from your step
+When extending the application with new analysis steps (feature selection, ML models, etc.), follow these guidelines to maintain compatibility with the status tracking system:
+
+### 1. Update the Workflow Class
+When adding a new step to the `AnnotationWorkflow` class:
+
+```python
+def process(self, input_vcf, output_dir):
+    """Process the complete annotation workflow with multiple steps"""
+    
+    # Initialize the status structure
+    status = {
+        "status": "running",
+        "steps": [
+            {"name": "annotation", "status": "pending", "timestamp": None},
+            {"name": "feature_selection", "status": "pending", "timestamp": None},
+            {"name": "model_training", "status": "pending", "timestamp": None}
+        ],
+        "current_step": "annotation",
+        "progress": 0
+    }
+    
+    # Write initial status
+    self._update_status_file(output_dir, status)
+    
+    try:
+        # Step 1: Annotation
+        status["steps"][0]["status"] = "running"
+        status["steps"][0]["timestamp"] = datetime.now().isoformat()
+        self._update_status_file(output_dir, status)
+        
+        # Run annotation...
+        
+        # Update status after annotation completes
+        status["steps"][0]["status"] = "completed"
+        status["current_step"] = "feature_selection"
+        status["progress"] = 33
+        self._update_status_file(output_dir, status)
+        
+        # Step 2: Feature Selection
+        status["steps"][1]["status"] = "running"
+        status["steps"][1]["timestamp"] = datetime.now().isoformat()
+        self._update_status_file(output_dir, status)
+        
+        # Run feature selection...
+        
+        # Continue with remaining steps...
+        
+        # Mark process as completed when all steps finish
+        status["status"] = "completed"
+        status["progress"] = 100
+        self._update_status_file(output_dir, status)
+        
+        return status
+        
+    except Exception as e:
+        status["status"] = "error"
+        status["error_message"] = str(e)
+        self._update_status_file(output_dir, status)
+        raise
+    
+def _update_status_file(self, output_dir, status):
+    """Helper method to update the status.json file"""
+    status_file = os.path.join(output_dir, "status.json")
+    with open(status_file, 'w') as f:
+        json.dump(status, f, indent=2)
+```
+
+### 2. Update Process Manager
+Ensure the `get_process_info` method is implemented in the `ProcessManager` class:
+
+```python
+def get_process_info(self, process_key: str) -> Optional[ProcessInfo]:
+    """Get complete process info"""
+    with self._lock:
+        if process_key in self._processes:
+            return self._processes[process_key]
+        return None
+```
+
+### 3. Status Checking in Flask Routes
+When adding new routes for additional processing steps, implement status checking:
+
+```python
+@app.route('/check_process/<process_key>')
+def check_process(process_key):
+    """Check process status and all workflow steps"""
+    try:
+        process_info = process_manager.get_process_info(process_key)
+        if not process_info:
+            return jsonify({'error': 'Process not found'}), 404
+            
+        status_file = os.path.join(process_info.output_folder, "status.json")
+        
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                status = json.load(f)
+                
+            # Update the process manager status
+            process_manager.update_process_status(process_key, status.get('status', 'running'))
+            
+            return jsonify(status)
+        
+        # Fallback if no status file exists
+        return jsonify({'status': process_manager.get_process_status(process_key)})
+        
+    except Exception as e:
+        app.logger.error(f"Error checking process: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+```
+
+### 4. Frontend Status Updates
+Make sure frontend is working properly based on the detailed status information:
+
+```javascript
+//poll for processing status
+async function pollStatus(processKey, timestamp, annotationType) {
+    try {
+        const response = await fetch(`/process_status/${processKey}`);
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to check status');
+        }
+        
+        console.log(`Process status: ${result.status}`); //added browsor console logging for debugging
+        
+        switch (result.status) {
+            case 'running':
+                showStatus('Processing in progress...', 'info');
+                break;
+            case 'completed':
+                clearStatusPolling();
+                showStatus('Processing completed!', 'success');
+                await fetchResults(timestamp, annotationType);
+                loadingSpinner.style.display = 'none';
+                break;
+            case 'cancelled':
+                clearStatusPolling();
+                loadingSpinner.style.display = 'none';
+                showStatus('Process was cancelled', 'warning', 3000);
+                showMessage('Process was cancelled');
+                break;
+            case 'error':
+                clearStatusPolling();
+                loadingSpinner.style.display = 'none';
+                showStatus('Processing failed', 'error', 3000);
+                throw new Error('Processing failed');
+            default:
+                showStatus(`Unknown status: ${result.status}`, 'warning');
+        }
+        
+    } catch (error) {
+        console.error('Status polling error:', error);
+        clearStatusPolling();
+        showError(`Status check failed: ${error.message}`);
+        showStatus('Error occurred', 'error', 3000);
+        loadingSpinner.style.display = 'none';
+    }
+}
+```
+
+### 5. Testing Multi-Step Workflows
+When implementing new steps, test thoroughly with both successful and error scenarios to ensure proper status updates.
 
 ## Project Status
 This project is in active development. It currently supports:

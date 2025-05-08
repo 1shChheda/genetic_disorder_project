@@ -186,15 +186,17 @@ def upload_file():
         app.logger.info(f"Using dbNSFP directory: {resolved_dbnsfp_dir}")
 
         # Validate file existence
-        if 'vcf_file' not in request.files:
+        if 'input_file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
             
-        file = request.files['vcf_file']
+        file = request.files['input_file']
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
             
-        if not file.filename.endswith('.vcf'):
-            return jsonify({'error': 'Invalid file type. Please upload a VCF file'}), 400
+        # Check file extension - allow both VCF and CSV
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        if file_extension not in ['.vcf', '.csv']:
+            return jsonify({'error': 'Invalid file type. Please upload a VCF or CSV file'}), 400
         
         # Get annotation configuration
         annotation_type = request.form.get('annotation_type')
@@ -221,7 +223,7 @@ def upload_file():
             output_folder
         )
 
-        # Associate process with session (IMPORTANT to understand)
+        # Associate process with session
         session_manager.add_process_to_session(session['session_id'], process_key)
         
         # Prepare workflow configuration
@@ -259,8 +261,9 @@ def upload_file():
             'timestamp': timestamp,
             'annotation_type': annotation_type,
             'output_folder': output_folder,
-            'pid': process.pid,  # Include PID in response for debugging
-            'dbnsfp_dir': dbnsfp_dir
+            'pid': process.pid,
+            'dbnsfp_dir': dbnsfp_dir,
+            'file_type': file_extension[1:]  # 'vcf' or 'csv' without the dot
         })
         
     except Exception as e:

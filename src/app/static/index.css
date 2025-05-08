@@ -520,6 +520,41 @@ button {
     background: #e2e8f0;
 }
 
+.file-type-info {
+    margin-top: 15px;
+    background-color: #f5f8fa;
+    border-radius: 6px;
+    padding: 12px;
+    border-left: 4px solid #3498db;
+}
+
+.file-type-hint {
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+}
+
+.file-type-hint i {
+    color: #3498db;
+    margin-right: 8px;
+}
+
+.file-format-explanation {
+    font-size: 0.9em;
+    color: #576574;
+}
+
+.file-format-explanation ul {
+    margin: 8px 0 0 20px;
+    padding: 0;
+}
+
+.file-format-explanation li {
+    margin-bottom: 5px;
+}
+
 .path-hint {
     color: #718096;
     font-size: 0.85rem;

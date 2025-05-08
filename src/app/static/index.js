@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
     const uploadForm = document.getElementById('upload-form');
-    const fileInput = document.getElementById('vcf_file');
+    const fileInput = document.getElementById('input_file');
     const fileName = document.getElementById('file-name');
     const loadingSpinner = document.getElementById('loading');
     const errorMessage = document.getElementById('error-message');
@@ -33,7 +33,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     //file input change handler
     fileInput.addEventListener('change', function(e) {
-        fileName.textContent = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
+        const fileName = this.files[0] ? this.files[0].name : 'No file chosen';
+        document.getElementById('file-name').textContent = fileName;
+        
+        // Check if the file extension is supported
+        if (fileName !== 'No file chosen') {
+            const fileExtension = fileName.split('.').pop().toLowerCase();
+            if (fileExtension !== 'vcf' && fileExtension !== 'csv') {
+                showError('Invalid file type. Please upload a VCF or CSV file.');
+                this.value = '';
+                document.getElementById('file-name').textContent = 'No file chosen';
+            }
+        }
     });
 
 // CANCEL PROCESS stuff 
@@ -112,7 +123,7 @@ document.addEventListener('DOMContentLoaded', function() {
         showStatus('Starting process...', 'info');
 
         const formData = new FormData(uploadForm);
-        formData.append('vcf_file', fileInput.files[0]);
+        formData.append('input_file', fileInput.files[0]);
         formData.append('annotation_type', selectedAnnotationType.value);
 
         //adding the dbNSFP path to form data
@@ -191,6 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             switch (result.status) {
                 case 'running':
+                    loadingSpinner.style.display = 'block';
                     showStatus('Processing in progress...', 'info');
                     break;
                 case 'completed':
