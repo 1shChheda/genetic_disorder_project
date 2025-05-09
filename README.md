@@ -346,8 +346,8 @@ This project is in active development. It currently supports:
 ## Future Development Roadmap
 The project will be extended with:
 - Feature engineering and selection:
-  - Recursive Feature Elimination (RFE)
-  - Random Forest Feature Selection
+  - Random Forest, XGBoost, Catboost, Hybrid ( RF + Catboost )
+  - BorutaPY + Best Model (XGBoost)
 - Pathogenicity prediction:
   - Deep Learning Model (Neural Network)
   - Variant classification (Benign/Pathogenic)
