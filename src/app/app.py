@@ -374,22 +374,13 @@ def get_results(timestamp):
         results_file = os.path.join(
             Config.PROCESSED_FOLDER,
             timestamp,
-            f'{annotation_type}_annotated_variants.csv'
+            f'{annotation_type}_annotated_variants.tsv'
         )
         
         if not os.path.exists(results_file):
             return jsonify({'error': 'Results not found'}), 404
-        
-        # read the tab-separated file correctly
-        # df = pd.read_csv(results_file, sep='\t', comment='#', na_values='.')
 
-        df = pd.read_csv(
-            results_file,
-            sep='\t',              #using tab as delimiter
-            comment=None,          #don't treat # as comment!
-            quoting=3,            # QUOTE_NONE - Don't use quotes
-            dtype=str             #reading all columns as strings initially to preserve values
-        )
+        df = pd.read_table(results_file)
         
         # Clean up column names by removing '#' if present
         # df.columns = [col.replace('#', '') for col in df.columns]
@@ -405,17 +396,18 @@ def get_results(timestamp):
         for col in df.select_dtypes(include=['float64']).columns:
             df[col] = df[col].round(4)
 
+#  THIS IS WRONG - GIVES WRONGLY FORMATTED CSV FILE
 # TO RE-FORMAT OG ANNOTATED FILE (to properly separate fields in different columns IN THE OG FILE ITSELF)
         #read original messed-up annotated_variants file
-        with open(results_file, 'r', encoding='utf-8') as infile:
-            lines = infile.readlines()
+        # with open(results_file, 'r', encoding='utf-8') as infile:
+        #     lines = infile.readlines()
         
-        #replace "tabs" with "commas" ---
-        converted_lines = [line.replace('\t', ',') for line in lines]
+        # #replace "tabs" with "commas" ---
+        # converted_lines = [line.replace('\t', ',') for line in lines]
 
-        #saving the csv file
-        with open(results_file, 'w', encoding='utf-8') as outfile:
-            outfile.writelines(converted_lines)
+        # #saving the csv file
+        # with open(results_file, 'w', encoding='utf-8') as outfile:
+        #     outfile.writelines(converted_lines)
         
         return jsonify({
             'success': True,
@@ -434,34 +426,17 @@ def download_results(timestamp):
         results_file = os.path.join(
             Config.PROCESSED_FOLDER,
             timestamp,
-            f'{annotation_type}_annotated_variants.csv'
+            f'{annotation_type}_annotated_variants.tsv'
         )
         
         if not os.path.exists(results_file):
             return jsonify({'error': 'Results file not found'}), 404
         
-        # #read original messed-up annotated_variants file ---
-        # with open(results_file, 'r', encoding='utf-8') as infile:
-        #     lines = infile.readlines()
-        
-        # #replace "tabs" with "commas" ---
-        # converted_lines = [line.replace('\t', ',') for line in lines]
-        
-        # temp_file = os.path.join(
-        #     Config.PROCESSED_FOLDER,
-        #     timestamp,
-        #     f'temp_{annotation_type}_annotated_variants.csv'
-        # )
-        
-        # #saving the csv file
-        # with open(temp_file, 'w', encoding='utf-8') as outfile:
-        #     outfile.writelines(converted_lines)
-        
         return send_file(
             results_file,
             as_attachment=True,
-            download_name=f'{annotation_type}_annotated_variants_{timestamp}.csv',
-            mimetype='text/csv'
+            download_name=f'{annotation_type}_annotated_variants_{timestamp}.tsv',
+            mimetype='text/tab-separated-values'
         )
         
     except Exception as e:
@@ -486,7 +461,7 @@ def get_status(timestamp):
         completed_files = []
         
         for ann_type in annotation_types:
-            result_file = os.path.join(folder_path, f'{ann_type}_annotated_variants.csv')
+            result_file = os.path.join(folder_path, f'{ann_type}_annotated_variants.tsv')
             if os.path.exists(result_file):
                 completed_files.append(ann_type)
         

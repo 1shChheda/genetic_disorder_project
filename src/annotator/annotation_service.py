@@ -65,7 +65,7 @@ class AnnotationWorkflow:
             
             # Step 3: Perform annotation
             self.logger.info(f"Annotating variants using {self.annotation_type}")
-            annotated_file = os.path.join(output_folder, f'{self.annotation_type}_annotated_variants.csv')
+            annotated_file = os.path.join(output_folder, f'{self.annotation_type}_annotated_variants.tsv')
             
             # Get the result of annotation
             annotation_result = self.annotator.annotate(parsed_file, annotated_file)

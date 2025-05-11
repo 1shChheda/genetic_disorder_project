@@ -323,7 +323,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${annotationType}_annotated_variants_${currentResultTimestamp}.csv`;
+            a.download = `${annotationType}_annotated_variants_${currentResultTimestamp}.tsv`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);

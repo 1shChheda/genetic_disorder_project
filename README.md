@@ -14,10 +14,10 @@ genetic_disorder_detection_project/
 │   ├── raw/                        # Raw input VCF files
 │   └── processed/                  # Processed output files
 │       └── <timestamped-folder>/   # Unique folder for each run
-│           ├── parsed_variants.csv
-│           ├── <type>_annotated_variants.csv
-│           ├── status.json         # Process status tracking file
-│           └── metadata.txt
+│           ├── dbnsfp_input.vcf    
+│           ├── <annotation_type>_annotated_variants_<timestamp>.csv
+│           ├── <annotation_type>_annotated_variants_<timestamp>.csv.err
+│           └── status.json         # Process status tracking file
 ├── src/                            # Source code
 │   ├── parser/                     # VCF parsing modules
 │   │   ├── __init__.py
